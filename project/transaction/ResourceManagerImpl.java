@@ -16,6 +16,7 @@ import java.io.Serializable;
 import java.rmi.*;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.Map;
 
 /** 
@@ -1224,4 +1225,62 @@ public class ResourceManagerImpl
     	customers = new HashMap <String, Customer>();
     	reservations = new HashMap <String, ArrayList<Reservation>>();
     }
+ }
+ 
+ class RMLog implements Serializable {
+	 public static final int PUT = 0;
+	 public static final int REMOVE = 1;
+	 public final int LSN;
+	 public boolean CLR;
+	 /* Table Name
+	  * "RMFlights";
+	  *	"RMRooms";
+	  *	"RMCars";
+	  *	"RMCustomers";
+	  */
+	 public final String table;
+	 public final String key;
+	 public Object value;
+	 
+	 public RMLog(int LSN, boolean CLR, String table, String key, Object value) {
+		 this.LSN = LSN;
+		 this.CLR = CLR;
+		 this.table = table;
+		 this.key = key;
+		 this.value = value;
+	 }
+
+ }
+ /*
+  * Log Manager for a Resourse Manager.
+  * 
+  */
+ 
+ class RMLogManager {
+	 private FileOutputStream logFile = null;
+	 private ObjectOutputStream oos = null;
+	 private int LSN = -1;	// Latest Log Sequence Number
+	 private LinkedList<RMLog> logQueue = null; // the log sequence in the memory
+	 public RMLogManager(String tableName) {
+		 // TODO: Init logFile,oos, LSN
+		 // 
+		 logQueue = new LinkedList<RMLog>();
+	 }
+	 
+	 public void newLog(boolean CLR, String table, String key, Object value) {
+		 logQueue.addLast(new RMLog(++LSN, CLR, table, key, value ));
+	 }
+	 
+	 
+	 public void flushLog(int LSN) throws IOException {
+		 while(!logQueue.isEmpty() && logQueue.peekFirst().LSN <= LSN) {
+			 oos.writeObject(logQueue.removeFirst());
+		 }
+	 }
+	 
+	 // return the log sequence after a specific LSN, used for recovery
+	 public ArrayList<RMLog> LogSequenceAfter(int LSN) {
+		 // TODO: read RMLog out from file stream
+		 return null;
+	 }
  }

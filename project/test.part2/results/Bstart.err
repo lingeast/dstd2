@@ -1,2 +1,0 @@
-Cannot bind to WC:java.rmi.ConnectException: Connection refused to host: ; nested exception is: 
-	java.net.ConnectException: Connection refused
