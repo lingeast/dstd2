@@ -60,11 +60,12 @@ public class ResourceManagerImpl
     }
     
 
-    public ResourceManagerImpl(String rmiName) throws IOException {
+    public ResourceManagerImpl(String rmiName) throws RemoteException, IOException {
 	myRMIName = rmiName;
 	xidCounter = 0;
 	FileReader[] ff = new FileReader[11];
 	boolean flag_restore = true;
+	
 	
 	new File("data").mkdir(); //not yet exist
 		
@@ -105,6 +106,7 @@ public class ResourceManagerImpl
 	    			if (f.read()!=-1){
 	    				ois = new ObjectInputStream(f);
 	    				flights = (HashMap <String, Flight>)ois.readObject();
+	    				ois.close();
 	    			}
 	    			break;
 	    		case 1:
@@ -112,6 +114,7 @@ public class ResourceManagerImpl
 	    			if (f.read()!=-1){
 	    				ois = new ObjectInputStream(f);
 	    				hotels = (HashMap <String, Hotel>)ois.readObject();
+	    				ois.close();
 	    			}
 	    			break;
 	    		case 2:
@@ -119,6 +122,7 @@ public class ResourceManagerImpl
 	    			if (f.read()!=-1){
 	    				ois = new ObjectInputStream(f);
 	    				cars = (HashMap <String, Car>)ois.readObject();
+	    				ois.close();
 	    			}
 	    			break;
 	    		case 3:
@@ -126,6 +130,7 @@ public class ResourceManagerImpl
 	    			if (f.read()!=-1){
 	    				ois = new ObjectInputStream(f);
 	    				customers = (HashMap <String, Customer>)ois.readObject();
+	    				ois.close();
 	    			}
 	    			break;
 	    		case 4:
@@ -133,13 +138,13 @@ public class ResourceManagerImpl
 	    			if (f.read()!=-1){
 	    				ois = new ObjectInputStream(f);
 	    				reservations = (HashMap<String, ArrayList<Reservation>>)ois.readObject();
+	    				ois.close();
 	    			}
 	    			break;
 	    		case 5:
 	    			xidCounter = pointer[i];
 	    		default: break;
 			}
-			ois.close();
 			}catch(EOFException  eo){
 				break;
 			} catch (ClassNotFoundException e) {
@@ -148,7 +153,6 @@ public class ResourceManagerImpl
 				break;
 			}
 		}
-		
 	}
 
 	while (!reconnect()) {
@@ -1230,24 +1234,33 @@ public class ResourceManagerImpl
  class RMLog implements Serializable {
 	 public static final int PUT = 0;
 	 public static final int REMOVE = 1;
+	 public static final int COMMIT = 2;
+	 public static final int ABORT = 3;
+	 public static final int CLR = 4;
+	 public static final int PREPARE = 5;
+	 
+	 int type;
 	 public final int LSN;
-	 public boolean CLR;
 	 /* Table Name
 	  * "RMFlights";
 	  *	"RMRooms";
 	  *	"RMCars";
 	  *	"RMCustomers";
 	  */
+	 
 	 public final String table;
 	 public final String key;
-	 public Object value;
+	 public Object beforeVal;
+	 public Object afterVal;
 	 
-	 public RMLog(int LSN, boolean CLR, String table, String key, Object value) {
+	 public RMLog(int LSN, int type,
+			 String table, String key, Object beforeVal, Object afterVal) {
 		 this.LSN = LSN;
-		 this.CLR = CLR;
+		 this.type = type;
 		 this.table = table;
 		 this.key = key;
-		 this.value = value;
+		 this.beforeVal = beforeVal;
+		 this.afterVal = afterVal;
 	 }
 
  }
@@ -1267,8 +1280,8 @@ public class ResourceManagerImpl
 		 logQueue = new LinkedList<RMLog>();
 	 }
 	 
-	 public void newLog(boolean CLR, String table, String key, Object value) {
-		 logQueue.addLast(new RMLog(++LSN, CLR, table, key, value ));
+	 public void newLog(int type, String table, String key, Object before, Object after) {
+		 logQueue.addLast(new RMLog(++LSN, type, table, key, before, after));
 	 }
 	 
 	 
