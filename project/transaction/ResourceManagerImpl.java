@@ -1270,14 +1270,56 @@ public class ResourceManagerImpl
   */
  
  class RMLogManager {
-	 private FileOutputStream logFile = null;
+	 private static final String logSuffix = ".log";
+	 
+	 private String RMName;
+	 
+	 //output Stream
+	 private FileOutputStream fos = null;
 	 private ObjectOutputStream oos = null;
+	 
+	 //input Stream
+	 private FileInputStream fis = null;
+	 private ObjectInputStream ois = null;
+	 
 	 private int LSN = -1;	// Latest Log Sequence Number
 	 private LinkedList<RMLog> logQueue = null; // the log sequence in the memory
 	 public RMLogManager(String tableName) {
-		 // TODO: Init logFile,oos, LSN
 		 // 
+		 RMName = tableName;
 		 logQueue = new LinkedList<RMLog>();
+	 }
+	 
+	 private void setOutputStream() throws IOException, FileNotFoundException {
+		 try {
+			 fos = new FileOutputStream(RMName + logSuffix, true);
+		 } catch (FileNotFoundException fe) {
+			 File f = new File(RMName + logSuffix);
+			 f.mkdirs();
+			 f.createNewFile();
+			 fos = new FileOutputStream(f, true);
+		 }
+		 oos = new ObjectOutputStream(fos);
+		 
+	 }
+	 
+	 private void closeOutputStream() throws IOException {
+		 if (oos != null)
+			 oos.close();
+		 if (fos != null)
+			 fos.close(); // redundant
+	 }
+	 
+	 private void setInputStream() throws FileNotFoundException, IOException {
+		fis = new FileInputStream(RMName + logSuffix);
+		ois = new ObjectInputStream(fis);
+	 }
+	 
+	 private void closeInputStream() throws IOException {
+		 if (ois != null)
+			 ois.close();
+		 if (fis != null)
+			 fis.close(); // redundant
 	 }
 	 
 	 public void newLog(int type, String table, String key, Object before, Object after) {
@@ -1292,8 +1334,29 @@ public class ResourceManagerImpl
 	 }
 	 
 	 // return the log sequence after a specific LSN, used for recovery
-	 public ArrayList<RMLog> LogSequenceAfter(int LSN) {
+	 public ArrayList<RMLog> LogSequenceAfter(int LSN) 
+			 throws IOException, ClassNotFoundException {
 		 // TODO: read RMLog out from file stream
-		 return null;
+		 this.closeOutputStream();
+		 try {
+			 this.setInputStream();
+		 } catch (FileNotFoundException fne) {
+			 return new ArrayList<RMLog>();
+		 }
+		 
+		 ArrayList<RMLog> logList = new ArrayList<RMLog>();
+		 while(true) {
+			 RMLog rmlog = null;
+			 try {
+				rmlog = (RMLog)ois.readObject();
+			 } catch (EOFException eofe) {
+				 // End of File
+				 break;
+			 }
+			 if (rmlog.LSN > LSN) {
+				 logList.add(rmlog);
+			 }
+		 }
+		 return logList;
 	 }
  }
