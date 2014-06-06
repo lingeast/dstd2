@@ -251,10 +251,42 @@ public interface ResourceManager extends Remote {
 	       InvalidTransactionException; 
 
     /* Return the total price of all reservations held for a customer. */
-    public int queryCustomerBill(int xid, String custName)
+	public int queryCustomerBill(int xid, String custName)
 	    throws RemoteException,
 		   TransactionAbortedException,
 		   InvalidTransactionException;
+
+    //////////
+    // RESERVATION INTERFACE
+    //////////
+    /**
+     * Reserve a flight on behalf of this customer.
+     *
+     * @param xid id of transaction.
+     * @param custName name of customer.
+     * @param flightNum flight number.
+     * @return true on success, false on failure.
+     *
+     * @throws RemoteException on communications failure.
+     * @throws TransactionAbortedException if transaction was aborted.
+     * @throws InvalidTransactionException if transaction id is invalid.
+     */
+    public boolean reserveFlight(int xid, String custName, String flightNum) 
+	throws RemoteException,
+	       TransactionAbortedException,
+	       InvalidTransactionException;
+
+    /** Reserve a car for this customer at the specified location. */
+    public boolean reserveCar(int xid, String custName, String location) 
+	throws RemoteException, 
+	       TransactionAbortedException,
+	       InvalidTransactionException; 
+
+    /** Reserve a room for this customer at the specified location. */
+    public boolean reserveRoom(int xid, String custName, String location) 
+	throws RemoteException,
+	       TransactionAbortedException,
+	       InvalidTransactionException;
     
 
 }

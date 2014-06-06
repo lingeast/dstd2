@@ -15,7 +15,7 @@ public class WorkflowControllerImpl
     extends java.rmi.server.UnicastRemoteObject
     implements WorkflowController {
 
-    protected int flightcounter, flightprice, carscounter, carsprice, roomscounter, roomsprice; 
+ //   protected int flightcounter, flightprice, carscounter, carsprice, roomscounter, roomsprice; 
     protected int xidCounter;
     
     protected ResourceManager rmFlights = null;
@@ -47,15 +47,15 @@ public class WorkflowControllerImpl
     
     
     public WorkflowControllerImpl() throws RemoteException {
-	flightcounter = 0;
-	flightprice = 0;
-	carscounter = 0;
-	carsprice = 0;
-	roomscounter = 0;
-	roomsprice = 0;
-	flightprice = 0;
+//	flightcounter = 0;
+//	flightprice = 0;
+//	carscounter = 0;
+//	carsprice = 0;
+//	roomscounter = 0;
+//	roomsprice = 0;
+//	flightprice = 0;
 
-	xidCounter = 1;
+	//xidCounter = 1;
 
 	while (!reconnect()) {
 	    // would be better to sleep a while
@@ -66,15 +66,20 @@ public class WorkflowControllerImpl
     // TRANSACTION INTERFACE
     public int start()
 	throws RemoteException {
-	return (xidCounter++);
+    	xidCounter++;
+    	if(!tm.start(xidCounter))
+    		return -1;
+    	return (xidCounter);
     }
 
     public boolean commit(int xid)
 	throws RemoteException, 
 	       TransactionAbortedException, 
 	       InvalidTransactionException {
-	System.out.println("Committing");
-	return true;
+    	System.out.println("Committing");
+    	if(!tm.commit(xidCounter))
+    		return false;
+    	return true;
     }
 
     public void abort(int xid)
@@ -89,17 +94,23 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	flightcounter += numSeats;
-	flightprice = price;
-	return true;
+    	if(!rmFlights.addFlight(xid, flightNum, numSeats, price))
+    		return false;
+    	tm.enlist(xid, "RMFlights");
+//	flightcounter += numSeats;
+//	flightprice = price;
+    	return true;
     }
 
     public boolean deleteFlight(int xid, String flightNum)
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	flightcounter = 0;
-	flightprice = 0;
+    	if(!rmFlights.deleteFlight(xid, flightNum))
+    		return false;
+    	tm.enlist(xid, "RMFlights");
+//	flightcounter = 0;
+//	flightprice = 0;
 	return true;
     }
 		
@@ -107,8 +118,11 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	roomscounter += numRooms;
-	roomsprice = price;
+    	if(!rmRooms.addRooms(xid, location, numRooms, price))
+    		return false;
+    	tm.enlist(xid, "RMRooms");
+//	roomscounter += numRooms;
+//	roomsprice = price;
 	return true;
     }
 
@@ -116,8 +130,11 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	roomscounter = 0;
-	roomsprice = 0;
+    	if(!rmRooms.deleteRooms(xid, location, numRooms))
+    		return false;
+    	tm.enlist(xid, "RMRooms");
+//	roomscounter = 0;
+//	roomsprice = 0;
 	return true;
     }
 
@@ -125,8 +142,11 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	carscounter += numCars;
-	carsprice = price;
+    	if(!rmCars.addCars(xid, location, numCars, price))
+    		return false;
+    	tm.enlist(xid, "RMCars");
+//	carscounter += numCars;
+//	carsprice = price;
 	return true;
     }
 
@@ -134,8 +154,11 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	carscounter = 0;
-	carsprice = 0;
+    	if(!rmCars.deleteCars(xid, location, numCars))
+    		return false;
+    	tm.enlist(xid, "RMCars");
+//	carscounter = 0;
+//	carsprice = 0;
 	return true;
     }
 
@@ -143,14 +166,20 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return true;
+    	if(!rmCustomers.newCustomer(xid, custName))
+    		return false;
+    	tm.enlist(xid, "RMCustomers");
+    	return true;
     }
 
     public boolean deleteCustomer(int xid, String custName) 
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return true;
+    	if(!rmCustomers.deleteCustomer(xid, custName))
+    		return false;
+    	tm.enlist(xid, "RMCustomers");
+    	return true;
     }
 
 
@@ -159,49 +188,58 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return flightcounter;
+    	tm.enlist(xid, "RMFlights");
+    	return rmFlights.queryFlight(xid, flightNum);
     }
 
     public int queryFlightPrice(int xid, String flightNum)
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return flightprice;
+    	tm.enlist(xid, "RMFlights");
+    	return rmFlights.queryFlightPrice(xid, flightNum);
     }
 
     public int queryRooms(int xid, String location)
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return roomscounter;
+    	tm.enlist(xid, "RMRooms");
+    	return rmRooms.queryRooms(xid, location);
     }
 
     public int queryRoomsPrice(int xid, String location)
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return roomsprice;
+    	tm.enlist(xid, "RMRooms");
+    	return rmRooms.queryRoomsPrice(xid, location);
     }
 
     public int queryCars(int xid, String location)
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return carscounter;
+    	tm.enlist(xid, "RMCars");
+    	return rmCars.queryCars(xid, location);
     }
 
     public int queryCarsPrice(int xid, String location)
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return carsprice;
+    	tm.enlist(xid, "RMCars");
+    	return rmCars.queryCarsPrice(xid, location);
     }
 
     public int queryCustomerBill(int xid, String custName)
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	return 0;
+    	tm.enlist(xid, "RMCustomers");
+    	tm.enlist(xid, "RMCars");
+    	tm.enlist(xid, "RMFlights");
+    	return 0;
     }
 
 
@@ -210,30 +248,62 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	flightcounter--;
-	return true;
+    	if(rmFlights.reserveFlight(xid, custName, flightNum))
+    		if(rmCustomers.reserveFlight(xid, custName, flightNum)){
+    	    	tm.enlist(xid, "RMCustomers");
+    	    	tm.enlist(xid, "RMFlights");
+    			return true;
+    		}
+    	//flightcounter--;
+	return false;
     }
  
     public boolean reserveCar(int xid, String custName, String location) 
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	carscounter--;
-	return true;
+    	if(rmCars.reserveCar(xid, custName, location))
+    		if(rmCustomers.reserveCar(xid, custName, location)){
+      	    	tm.enlist(xid, "RMCustomers");
+    	    	tm.enlist(xid, "RMCars");
+    	    	return true;
+    		}
+    			
+    	return false;
+	//carscounter--;
+	
     }
 
     public boolean reserveRoom(int xid, String custName, String location) 
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-	roomscounter--;
-	return true;
+    	if(rmRooms.reserveRoom(xid, custName, location))
+    		if(rmCustomers.reserveRoom(xid, custName, location)){
+      	    	tm.enlist(xid, "RMCustomers");
+    	    	tm.enlist(xid, "RMRooms");
+    	    	return true;
+    		}
+    return false;
+	//roomscounter--;
     }
 
     public boolean reserveItinerary(int xid, String custName, List flightNumList, String location, boolean needCar, boolean needRoom)
         throws RemoteException,
 	TransactionAbortedException,
 	InvalidTransactionException {
+    	for(Object flightNum:flightNumList){
+    		if(!reserveFlight(xid,custName,(String)flightNum))
+    			return false;
+    	}
+    	if(needCar){
+    		if(!reserveCar(xid,custName,location))
+    			return false;
+    	}
+    	if(needRoom){
+    		if(!reserveRoom(xid,custName,location))
+    			return false;
+    	}
 	return true;
     }
 

@@ -314,7 +314,7 @@ public class ResourceManagerImpl
     	
           //no XID check any more
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+flightNum, LockManager.WRITE);
+			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
 		} catch (DeadlockException e) {
 			e.printStackTrace();
 			return false;
@@ -344,7 +344,7 @@ public class ResourceManagerImpl
 	       InvalidTransactionException {
           //no XID check any more
         try {
-			lm.lock(xid, String.valueOf(myRMIName)+flightNum, LockManager.WRITE);
+			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
 		} catch (DeadlockException e) {
 			e.printStackTrace();
 			return false;
@@ -366,7 +366,7 @@ public class ResourceManagerImpl
 	       InvalidTransactionException {
     	 //no XID check any more
         try {
-			lm.lock(xid, String.valueOf(myRMIName)+location, LockManager.WRITE);
+			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -396,7 +396,7 @@ public class ResourceManagerImpl
 	       InvalidTransactionException {
     	 //no XID check any more
         try {
-			lm.lock(xid, String.valueOf(myRMIName)+location, LockManager.WRITE);
+			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -426,7 +426,7 @@ public class ResourceManagerImpl
     	
     	 //no XID check any more
         try {
-			lm.lock(xid, String.valueOf(myRMIName)+location, LockManager.WRITE);
+			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -457,7 +457,7 @@ public class ResourceManagerImpl
     	
     	 //no XID check any more
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+location, LockManager.WRITE);
+			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -487,7 +487,8 @@ public class ResourceManagerImpl
 	       InvalidTransactionException {
     	 //no XID check any more
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+custName, LockManager.WRITE);
+			lm.lock(xid, myRMIName+custName, LockManager.WRITE);
+			lm.lock(xid, "reservations"+custName, LockManager.WRITE);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -495,11 +496,15 @@ public class ResourceManagerImpl
 		}
         if(customers==null) return false;
         Customer curCustomer = customers.get(custName);
+        ArrayList<Reservation> curList = null;
     	if(curCustomer==null){
     		curCustomer = new Customer(custName);
     		customers.put(custName, curCustomer);
+    		curList = new ArrayList<Reservation> ();
+    		reservations.put(custName, curList);
     	}
         RML.newLog(0, TableName, custName, null, curCustomer);
+        RML.newLog(0, "reservations", custName, null, curList);
         return true;
     }
 
@@ -511,7 +516,7 @@ public class ResourceManagerImpl
     	// get transaction
     	 //no XID check any more
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+custName, LockManager.WRITE);
+			lm.lock(xid, myRMIName+custName, LockManager.WRITE);
 	    	lm.lock(xid, String.valueOf("reservations")+custName, LockManager.WRITE);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
@@ -566,7 +571,7 @@ public class ResourceManagerImpl
 	       TransactionAbortedException,
 	       InvalidTransactionException {
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+flightNum, LockManager.READ);
+			lm.lock(xid, myRMIName+flightNum, LockManager.READ);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -586,7 +591,7 @@ public class ResourceManagerImpl
 	       TransactionAbortedException,
 	       InvalidTransactionException {
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+flightNum, LockManager.READ);
+			lm.lock(xid, myRMIName+flightNum, LockManager.READ);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -606,7 +611,7 @@ public class ResourceManagerImpl
 	       TransactionAbortedException,
 	       InvalidTransactionException {
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+location, LockManager.READ);
+			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -618,7 +623,7 @@ public class ResourceManagerImpl
     	if(curHotel!=null)
 			return curHotel.numAvail;
     	else
-    		return -1;
+    		return 0;
     }
 
     public int queryRoomsPrice(int xid, String location)
@@ -626,7 +631,7 @@ public class ResourceManagerImpl
 	       TransactionAbortedException,
 	       InvalidTransactionException {
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+location, LockManager.READ);
+			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -646,7 +651,7 @@ public class ResourceManagerImpl
 	       TransactionAbortedException,
 	       InvalidTransactionException {
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+location, LockManager.READ);
+			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -666,7 +671,7 @@ public class ResourceManagerImpl
 	       TransactionAbortedException,
 	       InvalidTransactionException {
     	try {
-			lm.lock(xid, String.valueOf(myRMIName)+location, LockManager.READ);
+			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -691,7 +696,164 @@ public class ResourceManagerImpl
     	return total;
     }
 
+    // Reservation INTERFACE
+    public boolean reserveFlight(int xid, String custName, String flightNum) 
+	throws RemoteException, 
+	       TransactionAbortedException,
+	       InvalidTransactionException {
+    	if(myRMIName.equals(RMINameFlights)){//for RM interface
+    		try {
+    			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
+    		} catch (DeadlockException e) {
+    			e.printStackTrace();
+    			return false;
+    		}    
+        	if(flights==null) return false;
+        	Flight curFlight = flights.get(flightNum);
+        	Flight oldFlight = null;
+        	if(curFlight==null){
+        		curFlight = new Flight(flightNum);
+        		flights.put(flightNum, curFlight);
+        		}else{
+        			oldFlight = new Flight(curFlight);
+        		}
+            curFlight.numAvail-=1;
+            if(curFlight.numAvail<0)
+            	return false;
+            RML.newLog(0, TableName, flightNum, oldFlight, curFlight);
+        	return true;
+    	}else
+    	if(myRMIName.equals(RMINameCustomers)){
+    		try {
+    			lm.lock(xid, "reservations"+custName, LockManager.WRITE);
+    		} catch (DeadlockException e) {
+    			e.printStackTrace();
+    			return false;
+    		}    
+        	if(reservations==null) return false;
+        	ArrayList<Reservation> curRevlist = reservations.get(custName);
+        	ArrayList<Reservation> oldRevlist = null;
+        	if(curRevlist==null){//since it's created when calling newcustumer, if null, no customer
+        		return false;
+        		}else{
+        			oldRevlist = new ArrayList<Reservation>(curRevlist);
+        		}
+        	Reservation rev = new Reservation(custName,FLIGHT,flightNum);
+        	curRevlist.add(rev);
+            RML.newLog(0, TableName, custName, oldRevlist, curRevlist);
+        	return true;
+    		
+    	}else{
+    		System.err.println("wrong call to reservation");
+    		return false;
+    	}
+    	
+    }
+ 
+    public boolean reserveCar(int xid, String custName, String location) 
+	throws RemoteException, 
+	       TransactionAbortedException,
+	       InvalidTransactionException {
+    	if(myRMIName.equals(RMINameCars)){//for RM interface
+    		try {
+    			lm.lock(xid, myRMIName+location, LockManager.WRITE);
+    		} catch (DeadlockException e) {
+    			e.printStackTrace();
+    			return false;
+    		}    
+        	if(cars==null) return false;
+        	Car curCar = cars.get(location);
+        	Car oldCar = null;
+        	if(curCar==null){
+        		curCar = new Car(location);
+        		cars.put(location, curCar);
+        		}else{
+        			oldCar = new Car(curCar);
+        		}
+        	curCar.numAvail-=1;
+            if(curCar.numAvail<0)
+            	return false;
+            RML.newLog(0, TableName, location, oldCar, curCar);
+        	return true;
+    	}else
+    	if(myRMIName.equals(RMINameCustomers)){
+    		try {
+    			lm.lock(xid, "reservations"+custName, LockManager.WRITE);
+    		} catch (DeadlockException e) {
+    			e.printStackTrace();
+    			return false;
+    		}    
+        	if(reservations==null) return false;
+        	ArrayList<Reservation> curRevlist = reservations.get(custName);
+        	ArrayList<Reservation> oldRevlist = null;
+        	if(curRevlist==null){//since it's created when calling newcustumer, if null, no customer
+        		return false;
+        		}else{
+        			oldRevlist = new ArrayList<Reservation>(curRevlist);
+        		}
+        	Reservation rev = new Reservation(custName,CAR,location);
+        	curRevlist.add(rev);
+            RML.newLog(0, TableName, custName, oldRevlist, curRevlist);
+        	return true;
+    		
+    	}else{
+    		System.err.println("wrong call to reservation");
+    		return false;
+    	}
+    }
 
+    public boolean reserveRoom(int xid, String custName, String location) 
+	throws RemoteException, 
+	       TransactionAbortedException,
+	       InvalidTransactionException {
+    	
+    	if(myRMIName.equals(RMINameRooms)){//for RM interface
+    		try {
+    			lm.lock(xid, myRMIName+location, LockManager.WRITE);
+    		} catch (DeadlockException e) {
+    			e.printStackTrace();
+    			return false;
+    		}    
+        	if(hotels==null) return false;
+        	Hotel curHotel = hotels.get(location);
+        	Hotel oldHotel = null;
+        	if(curHotel==null){
+        		curHotel = new Hotel(location);
+        		hotels.put(location, curHotel);
+        		}else{
+        			oldHotel = new Hotel(curHotel);
+        		}
+        	curHotel.numAvail-=1;
+            if(curHotel.numAvail<0)
+            	return false;
+            RML.newLog(0, TableName, location, oldHotel, curHotel);
+        	return true;
+    	}else
+    	if(myRMIName.equals(RMINameCustomers)){
+    		try {
+    			lm.lock(xid, "reservations"+custName, LockManager.WRITE);
+    		} catch (DeadlockException e) {
+    			e.printStackTrace();
+    			return false;
+    		}    
+        	if(reservations==null) return false;
+        	ArrayList<Reservation> curRevlist = reservations.get(custName);
+        	ArrayList<Reservation> oldRevlist = null;
+        	if(curRevlist==null){//since it's created when calling newcustumer, if null, no customer
+        		return false;
+        		}else{
+        			oldRevlist = new ArrayList<Reservation>(curRevlist);
+        		}
+        	Reservation rev = new Reservation(custName,HOTEL,location);
+        	curRevlist.add(rev);
+            RML.newLog(0, TableName, custName, oldRevlist, curRevlist);
+        	return true;
+    		
+    	}else{
+    		System.err.println("wrong call to reservation");
+    		return false;
+    	}
+    }
 
 
     // TECHNICAL/TESTING INTERFACE
