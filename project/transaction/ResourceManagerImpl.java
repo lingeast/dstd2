@@ -33,7 +33,10 @@ public class ResourceManagerImpl
     protected TransactionManager tm = null;
     protected RMLogManager RML = null;
     protected int xidCounter;
-    protected String TableName = null; //
+    protected String tableName = null; //
+    
+    private String dbName = null; // database file name
+    private static String dirName = "data/";
     LockManager lm = new LockManager();
     String[] file={"data/Pointer","data/Flights1","data/Flights2","data/Hotels1","data/Hotels2","data/Cars1","data/Cars2","data/Customers1","data/Customers2","data/Reservations1","data/Reservations2"};
 	
@@ -81,44 +84,66 @@ public class ResourceManagerImpl
     	}
 	}
         
-	public ResourceManagerImpl(String rmiName) throws RemoteException, IOException {
+	public ResourceManagerImpl(String rmiName) throws RemoteException, IOException, ClassNotFoundException {
     	myRMIName = rmiName; 
     	xidCounter = 0;
     	
     	new File("data").mkdir(); //not yet exist
     	
     	
-    	
     	if(myRMIName.equals(RMINameFlights)){
     		flights = new HashMap <String, Flight>();
-    		TableName = "flights";
+    		tableName = "flights";
     	}
     	if(myRMIName.equals(RMINameRooms)){
     		hotels = new HashMap <String, Hotel>();
-			TableName = "rooms";
+			tableName = "rooms";
     	}
     	if(myRMIName.equals(RMINameCars)){
 			cars = new HashMap <String, Car>();
-			TableName = "cars";
+			tableName = "cars";
     	}
     	if(myRMIName.equals(RMINameCustomers)){
 			customers = new HashMap <String, Customer>();
 			reservations = new HashMap <String, ArrayList<Reservation>>();
-			TableName = "customers";
+			tableName = "customers";
     	}
+    	
+    	dbName = this.dirName + tableName;
 
-    	if(TableName.isEmpty()){
+    	if(tableName.isEmpty()){
     			throw new RemoteException("Wrong RMI name");
     	}
     	
-    	RML = new RMLogManager(TableName);
-    	//RML.recover();
+    	RML = new RMLogManager(tableName);
+    	this.recover();
     	
 
     	while (!reconnect()) {
     	    // would be better to sleep a while
     	} 
     }
+	
+	private void recover() throws ClassNotFoundException, IOException {
+		//Analysis phase
+		FileOutputStream fos = null;
+		int pageLSN = -1;
+		try {
+			fos = new FileOutputStream(dbName);
+		} catch (FileNotFoundException fnfe) {
+			fos = null;
+		}
+		if (fos != null) {
+			// has database on disk
+			// TODO: read LSN out
+		} else {
+			// no database on disk
+			pageLSN = -1;
+		}
+		ArrayList<RMLog> logs = RML.LogSequenceAfter(pageLSN);
+		//Redo phase
+		//Undo phase
+	}
 
 	public boolean reconnect()
     	throws RemoteException {
@@ -334,7 +359,7 @@ public class ResourceManagerImpl
         curFlight.numAvail+=numSeats;
         if(curFlight.numSeats<0||curFlight.numSeats<0)
         	return false;
-        RML.newLog(0, TableName, flightNum, oldFlight, curFlight);
+        RML.newLog(RMLog.PUT, xid, tableName, flightNum, oldFlight, curFlight);
     	return true;
     }
 
@@ -356,7 +381,7 @@ public class ResourceManagerImpl
         	return false;
         }
         flights.remove(curFlight);
-        RML.newLog(0, TableName, flightNum, curFlight, null);
+        RML.newLog(RMLog.REMOVE, xid, tableName, flightNum, curFlight, null);
     	return true;
     } 
 		
@@ -386,7 +411,7 @@ public class ResourceManagerImpl
         curHotel.numRooms += numRooms;
         curHotel.numAvail += numRooms;
 
-        RML.newLog(0, TableName, location, oldHotel, curHotel);
+        RML.newLog(RMLog.PUT, xid, tableName, location, oldHotel, curHotel);
         return true;
     }
 
@@ -414,7 +439,7 @@ public class ResourceManagerImpl
             hotels.remove(location);
             curHotel = null;
         }
-        RML.newLog(0, TableName, location, oldHotel, curHotel);
+        RML.newLog(RMLog.REMOVE, xid, tableName, location, oldHotel, curHotel);
 
         return true;
     }
@@ -446,7 +471,7 @@ public class ResourceManagerImpl
         curCar.numCars += numCars;
         curCar.numAvail += numCars;
         
-        RML.newLog(0, TableName, location, oldCar, curCar);
+        RML.newLog(RMLog.PUT, xid, tableName, location, oldCar, curCar);
         return true;
     }
 
@@ -477,7 +502,7 @@ public class ResourceManagerImpl
             curCar = null;
         }
         
-        RML.newLog(0, TableName, location, oldCar, curCar);
+        RML.newLog(RMLog.REMOVE, xid, tableName, location, oldCar, curCar);
         return true;
     }
 
@@ -503,8 +528,8 @@ public class ResourceManagerImpl
     		curList = new ArrayList<Reservation> ();
     		reservations.put(custName, curList);
     	}
-        RML.newLog(0, TableName, custName, null, curCustomer);
-        RML.newLog(0, "reservations", custName, null, curList);
+        RML.newLog(RMLog.PUT, xid, tableName, custName, null, curCustomer);
+        RML.newLog(RMLog.PUT, xid, "reservations", custName, null, curList);
         return true;
     }
 
@@ -558,8 +583,8 @@ public class ResourceManagerImpl
 	   			default: System.err.println("Unidentified reservation");
 	   		}
         }*/
-        RML.newLog(0, TableName, custName, curCustomer, null);
-        RML.newLog(0, "reservations", custName, curRevlist, null);
+        RML.newLog(RMLog.REMOVE, xid, tableName, custName, curCustomer, null);
+        RML.newLog(RMLog.REMOVE, xid, "reservations", custName, curRevlist, null);
         return true;
         
     }
@@ -720,7 +745,7 @@ public class ResourceManagerImpl
             curFlight.numAvail-=1;
             if(curFlight.numAvail<0)
             	return false;
-            RML.newLog(0, TableName, flightNum, oldFlight, curFlight);
+            RML.newLog(RMLog.PUT, xid, tableName, flightNum, oldFlight, curFlight);
         	return true;
     	}else
     	if(myRMIName.equals(RMINameCustomers)){
@@ -740,7 +765,7 @@ public class ResourceManagerImpl
         		}
         	Reservation rev = new Reservation(custName,FLIGHT,flightNum);
         	curRevlist.add(rev);
-            RML.newLog(0, TableName, custName, oldRevlist, curRevlist);
+            RML.newLog(RMLog.PUT, xid, tableName, custName, oldRevlist, curRevlist);
         	return true;
     		
     	}else{
@@ -773,7 +798,7 @@ public class ResourceManagerImpl
         	curCar.numAvail-=1;
             if(curCar.numAvail<0)
             	return false;
-            RML.newLog(0, TableName, location, oldCar, curCar);
+            RML.newLog(RMLog.PUT, xid, tableName, location, oldCar, curCar);
         	return true;
     	}else
     	if(myRMIName.equals(RMINameCustomers)){
@@ -793,7 +818,7 @@ public class ResourceManagerImpl
         		}
         	Reservation rev = new Reservation(custName,CAR,location);
         	curRevlist.add(rev);
-            RML.newLog(0, TableName, custName, oldRevlist, curRevlist);
+            RML.newLog(RMLog.PUT, xid, tableName, custName, oldRevlist, curRevlist);
         	return true;
     		
     	}else{
@@ -826,7 +851,7 @@ public class ResourceManagerImpl
         	curHotel.numAvail-=1;
             if(curHotel.numAvail<0)
             	return false;
-            RML.newLog(0, TableName, location, oldHotel, curHotel);
+            RML.newLog(RMLog.PUT, xid, tableName, location, oldHotel, curHotel);
         	return true;
     	}else
     	if(myRMIName.equals(RMINameCustomers)){
@@ -846,7 +871,7 @@ public class ResourceManagerImpl
         		}
         	Reservation rev = new Reservation(custName,HOTEL,location);
         	curRevlist.add(rev);
-            RML.newLog(0, TableName, custName, oldRevlist, curRevlist);
+            RML.newLog(RMLog.PUT, xid, tableName, custName, oldRevlist, curRevlist);
         	return true;
     		
     	}else{
@@ -995,6 +1020,7 @@ class RMLog implements Serializable {
 
 	 int type;
 	 public final int LSN;
+	 public final int xid;
 	 /* Table Name
 	  * "RMFlights";
 	  *	"RMRooms";
@@ -1009,10 +1035,11 @@ class RMLog implements Serializable {
 	 public Object afterVal;
 
 
-	 public RMLog(int LSN, int type,
+	 public RMLog(int LSN, int type, int xid,
 			 String table, String key, Object beforeVal, Object afterVal) {
 		 this.LSN = LSN;
 		 this.type = type;
+		 this.xid = xid;
 		 this.table = table;
 		 this.key = key;
 		 this.beforeVal = beforeVal;
@@ -1028,9 +1055,11 @@ class RMLog implements Serializable {
  
  class RMLogManager {
 	 private static final String logSuffix = ".log";
+	 private static final String dirName = "data/";
 
 
 	 private String RMName;
+	 private final String logName;
 
 
 	 //output Stream
@@ -1043,18 +1072,23 @@ class RMLog implements Serializable {
 	 private ObjectInputStream ois = null;
 
 
-	 private int LSN = -1;	// Latest Log Sequence Number
+	 private int LSN;	// Latest Log Sequence Number
 	 private LinkedList<RMLog> logQueue = null; // the log sequence in the memory
 	 public RMLogManager(String tableName) {
 		 // 
 		 RMName = tableName;
+		 logName = dirName + RMName + logSuffix;
 		 logQueue = new LinkedList<RMLog>();
 	 }
 
+	 /*
+	  * Set output stream to log file
+	  * Try to create new file if not exists
+	  */
 
 	 private void setOutputStream() throws IOException, FileNotFoundException {
 		 try {
-			 fos = new FileOutputStream(RMName + logSuffix, true);
+			 fos = new FileOutputStream(logName, true);
 		 } catch (FileNotFoundException fe) {
 			 File f = new File(RMName + logSuffix);
 			 f.mkdirs();
@@ -1066,6 +1100,9 @@ class RMLog implements Serializable {
 
 	 }
 
+	 /*
+	  * 
+	  */
 
 	 private void closeOutputStream() throws IOException {
 		 if (oos != null)
@@ -1074,12 +1111,19 @@ class RMLog implements Serializable {
 			 fos.close(); // redundant
 	 }
 
+	 /*
+	  * Set inputStream from logFile
+	  * Throw FileNotFoundException if file not exists
+	  */
 
 	 private void setInputStream() throws FileNotFoundException, IOException {
 		fis = new FileInputStream(RMName + logSuffix);
 		ois = new ObjectInputStream(fis);
 	 }
 
+	 /*
+	  * 
+	  */
 
 	 private void closeInputStream() throws IOException {
 		 if (ois != null)
@@ -1089,17 +1133,24 @@ class RMLog implements Serializable {
 	 }
 
 
-	 public void newLog(int type, String table, String key, Object before, Object after) {
-		 logQueue.addLast(new RMLog(++LSN, type, table, key, before, after));
+	 public void newLog(int type, int xid, String table, String key, Object before, Object after) {
+		 logQueue.addLast(new RMLog(++LSN, type, xid, table, key, before, after));
 	 }
 
 
+	 /*
+	  * FLush logs that < LSN to file
+	  */
 
 
 	 public void flushLog(int LSN) throws IOException {
+		 this.closeInputStream();
+		 this.setOutputStream();
 		 while(!logQueue.isEmpty() && logQueue.peekFirst().LSN <= LSN) {
 			 oos.writeObject(logQueue.removeFirst());
 		 }
+		 oos.flush();
+		 fos.flush();
 	 }
 
 
