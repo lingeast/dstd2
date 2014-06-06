@@ -324,7 +324,6 @@ public class ResourceManagerImpl
     	try {
 			lm.lock(xid, String.valueOf(myRMIName)+flightNum, LockManager.WRITE);
 		} catch (DeadlockException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 			return false;
 		}    
@@ -341,7 +340,8 @@ public class ResourceManagerImpl
         	curFlight.price = price;
         curFlight.numSeats+=numSeats;
         curFlight.numAvail+=numSeats;
-        
+        if(curFlight.numSeats<0||curFlight.numSeats<0)
+        	return false;
         RML.newLog(0, TableName, flightNum, oldFlight, curFlight);
     	return true;
     }
@@ -354,7 +354,6 @@ public class ResourceManagerImpl
         try {
 			lm.lock(xid, String.valueOf(myRMIName)+flightNum, LockManager.WRITE);
 		} catch (DeadlockException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 			return false;
 		}
@@ -831,14 +830,15 @@ public class ResourceManagerImpl
 
 
  
- class RMLog implements Serializable {
+class RMLog implements Serializable {
 	 public static final int PUT = 0;
 	 public static final int REMOVE = 1;
 	 public static final int COMMIT = 2;
 	 public static final int ABORT = 3;
 	 public static final int CLR = 4;
 	 public static final int PREPARE = 5;
-	 
+
+
 	 int type;
 	 public final int LSN;
 	 /* Table Name
@@ -847,12 +847,14 @@ public class ResourceManagerImpl
 	  *	"RMCars";
 	  *	"RMCustomers";
 	  */
-	 
+
+
 	 public final String table;
 	 public final String key;
 	 public Object beforeVal;
 	 public Object afterVal;
-	 
+
+
 	 public RMLog(int LSN, int type,
 			 String table, String key, Object beforeVal, Object afterVal) {
 		 this.LSN = LSN;
@@ -863,6 +865,7 @@ public class ResourceManagerImpl
 		 this.afterVal = afterVal;
 	 }
 
+
  }
  /*
   * Log Manager for a Resourse Manager.
@@ -871,17 +874,21 @@ public class ResourceManagerImpl
  
  class RMLogManager {
 	 private static final String logSuffix = ".log";
-	 
+
+
 	 private String RMName;
-	 
+
+
 	 //output Stream
 	 private FileOutputStream fos = null;
 	 private ObjectOutputStream oos = null;
-	 
+
+
 	 //input Stream
 	 private FileInputStream fis = null;
 	 private ObjectInputStream ois = null;
-	 
+
+
 	 private int LSN = -1;	// Latest Log Sequence Number
 	 private LinkedList<RMLog> logQueue = null; // the log sequence in the memory
 	 public RMLogManager(String tableName) {
@@ -889,7 +896,8 @@ public class ResourceManagerImpl
 		 RMName = tableName;
 		 logQueue = new LinkedList<RMLog>();
 	 }
-	 
+
+
 	 private void setOutputStream() throws IOException, FileNotFoundException {
 		 try {
 			 fos = new FileOutputStream(RMName + logSuffix, true);
@@ -900,39 +908,47 @@ public class ResourceManagerImpl
 			 fos = new FileOutputStream(f, true);
 		 }
 		 oos = new ObjectOutputStream(fos);
-		 
+
+
 	 }
-	 
+
+
 	 private void closeOutputStream() throws IOException {
 		 if (oos != null)
 			 oos.close();
 		 if (fos != null)
 			 fos.close(); // redundant
 	 }
-	 
+
+
 	 private void setInputStream() throws FileNotFoundException, IOException {
 		fis = new FileInputStream(RMName + logSuffix);
 		ois = new ObjectInputStream(fis);
 	 }
-	 
+
+
 	 private void closeInputStream() throws IOException {
 		 if (ois != null)
 			 ois.close();
 		 if (fis != null)
 			 fis.close(); // redundant
 	 }
-	 
+
+
 	 public void newLog(int type, String table, String key, Object before, Object after) {
 		 logQueue.addLast(new RMLog(++LSN, type, table, key, before, after));
 	 }
-	 
-	 
+
+
+
+
 	 public void flushLog(int LSN) throws IOException {
 		 while(!logQueue.isEmpty() && logQueue.peekFirst().LSN <= LSN) {
 			 oos.writeObject(logQueue.removeFirst());
 		 }
 	 }
-	 
+
+
 	 // return the log sequence after a specific LSN, used for recovery
 	 public ArrayList<RMLog> LogSequenceAfter(int LSN) 
 			 throws IOException, ClassNotFoundException {
@@ -943,7 +959,8 @@ public class ResourceManagerImpl
 		 } catch (FileNotFoundException fne) {
 			 return new ArrayList<RMLog>();
 		 }
-		 
+
+
 		 ArrayList<RMLog> logList = new ArrayList<RMLog>();
 		 while(true) {
 			 RMLog rmlog = null;
