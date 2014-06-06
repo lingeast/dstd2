@@ -36,7 +36,6 @@ public class ResourceManagerImpl
     protected String TableName = null; //
     LockManager lm = new LockManager();
     String[] file={"data/Pointer","data/Flights1","data/Flights2","data/Hotels1","data/Hotels2","data/Cars1","data/Cars2","data/Customers1","data/Customers2","data/Reservations1","data/Reservations2"};
-	int [] pointer =new int [6];   //the 6th represents how many transactions ran
 	
     // Use Hash Map to represent tables
     // flightNum as primary key
@@ -90,25 +89,25 @@ public class ResourceManagerImpl
     	
     	
     	
-    	switch(myRMIName){
-    		case RMINameFlights:
-    			flights = new HashMap <String, Flight>();
-    			TableName = "flights";
-    			break;
-    		case RMINameRooms:
-    			hotels = new HashMap <String, Hotel>();
-    			TableName = "rooms";
-    			break;
-    		case RMINameCars:
-    			cars = new HashMap <String, Car>();
-    			TableName = "cars";
-    			break;
-    		case RMINameCustomers:
-    			customers = new HashMap <String, Customer>();
-    			reservations = new HashMap <String, ArrayList<Reservation>>();
-    			TableName = "customers";
-    			break;
-    		default: 
+    	if(myRMIName.equals(RMINameFlights)){
+    		flights = new HashMap <String, Flight>();
+    		TableName = "flights";
+    	}
+    	if(myRMIName.equals(RMINameRooms)){
+    		hotels = new HashMap <String, Hotel>();
+			TableName = "rooms";
+    	}
+    	if(myRMIName.equals(RMINameCars)){
+			cars = new HashMap <String, Car>();
+			TableName = "cars";
+    	}
+    	if(myRMIName.equals(RMINameCustomers)){
+			customers = new HashMap <String, Customer>();
+			reservations = new HashMap <String, ArrayList<Reservation>>();
+			TableName = "customers";
+    	}
+
+    	if(TableName.isEmpty()){
     			throw new RemoteException("Wrong RMI name");
     	}
     	
@@ -145,17 +144,10 @@ public class ResourceManagerImpl
 
 
     // TRANSACTION INTERFACE
-    
+    //maybe useful for checkpoint
     private void push2file(Object obj,int type, int filenumber) throws FileNotFoundException, IOException{
     	ObjectOutputStream oos = null;
     	switch(type){
-    	case 0: // push pointer
-    	    FileWriter writer = new FileWriter(file[0]); 
-    	    for(int i=0;i<6;i++)
-    	    	writer.write(pointer[i]+'0');
-    	    writer.flush();
-    	    writer.close();
-    	    break;
     	case FLIGHT: 
     		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
 			oos.writeObject((HashMap <String, Flight>)obj);

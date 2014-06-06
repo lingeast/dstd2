@@ -24,11 +24,40 @@ public interface ResourceManager extends Remote {
     public static final String RMINameRooms = "RMRooms";
     public static final String RMINameCars = "RMCars";
     public static final String RMINameCustomers = "RMCustomers";
-    
+    public static final int FLIGHT = 1;
+    public static final int HOTEL = 2;
+    public static final int CAR = 3;
+    public static final int CUSTOMER = 4;
+    public static final int RESERVATION = 5;
     
     //////////
     // ADMINISTRATIVE INTERFACE
     //////////
+    /**
+     * Commit transaction.
+     *
+     * @param xid id of transaction to be committed.
+     * @return true on success, false on failure.
+     *
+     * @throws RemoteException on communications failure.
+     * @throws TransactionAbortedException if transaction was aborted.
+     * @throws InvalidTransactionException if transaction id is invalid.
+     */
+    public boolean commit(int xid) 
+	throws RemoteException, 
+	       TransactionAbortedException,
+	       InvalidTransactionException; 
+    /**
+     * Abort transaction.
+     *
+     * @param xid id of transaction to be aborted.
+     *
+     * @throws RemoteException on communications failure.
+     * @throws InvalidTransactionException if transaction id is invalid.
+     */
+    public void abort(int xid) 
+	throws RemoteException, 
+	       InvalidTransactionException; 
     /**
      * Add seats to a flight.  In general this will be used to create
      * a new flight, but it should be possible to add seats to an
@@ -227,35 +256,5 @@ public interface ResourceManager extends Remote {
 		   TransactionAbortedException,
 		   InvalidTransactionException;
     
-    //////////
-    // RESERVATION INTERFACE
-    //////////
-    /**
-     * Reserve a flight on behalf of this customer.
-     *
-     * @param xid id of transaction.
-     * @param custName name of customer.
-     * @param flightNum flight number.
-     * @return true on success, false on failure.
-     *
-     * @throws RemoteException on communications failure.
-     * @throws TransactionAbortedException if transaction was aborted.
-     * @throws InvalidTransactionException if transaction id is invalid.
-     */
-    public boolean reserveFlight(int xid, String custName, String flightNum) 
-	throws RemoteException,
-	       TransactionAbortedException,
-	       InvalidTransactionException;
 
-    /** Reserve a car for this customer at the specified location. */
-    public boolean reserveCar(int xid, String custName, String location) 
-	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
-
-    /** Reserve a room for this customer at the specified location. */
-    public boolean reserveRoom(int xid, String custName, String location) 
-	throws RemoteException,
-	       TransactionAbortedException,
-	       InvalidTransactionException;
 }
