@@ -157,7 +157,9 @@ public class ResourceManagerImpl
 			if (dummy == null) {
 				throw new IllegalArgumentException("Remove unexist record");
 			}
-		} 
+		} //should write CLRs
+		
+		  RML.newLog(RMLog.CLR, log.xid, tableName, log.key, log.afterVal, log.beforeVal);
 		/*else {
 			throw new IllegalArgumentException("Can not redo type = " + log.type + "on table");
 		}*/
@@ -242,7 +244,7 @@ public class ResourceManagerImpl
 		    		newfile.createNewFile();
 	    		}
 	    	}
-			
+	    	if (ois != null) ois.close();
 			// TODO: read LSN out
 		} else {
 			// no database on disk
@@ -251,36 +253,61 @@ public class ResourceManagerImpl
 		List<RMLog> logs = RML.LogSequenceAfter(pageLSN);
 		HashSet<Integer> actTrans = new HashSet<Integer>();
 		HashSet<Integer> cmtTrans = new HashSet<Integer>();
-		
+		HashSet<Integer> abtTrans = new HashSet<Integer>();
+		HashSet<Integer> preTrans = new HashSet<Integer>();
 		for (RMLog log : logs) {
 			actTrans.add(log.xid);
 			if (log.type == RMLog.COMMIT) {
 				if (!cmtTrans.add(log.xid)) {
 					throw new IllegalArgumentException("same transaction commit twice!");
 				}
+				actTrans.remove(log.xid);
+			}else if(log.type == RMLog.ABORT){  //no need to redo or undo aborted transaction(only for higher efficiency)
+				if (!abtTrans.add(log.xid)) {
+					throw new IllegalArgumentException("same transaction abort twice!");
+				}
+				actTrans.remove(log.xid);
+			}else if(log.type == RMLog.PREPARE){  // need to redo and get lock again..
+				if (!preTrans.add(log.xid)) {
+					throw new IllegalArgumentException("same transaction prepare twice!");
+				}
+				actTrans.remove(log.xid);
 			}
 		}
 		
 		//Redo phase
 		for (RMLog log : logs) {
-			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE) {
+			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE ) {
 				// redo in memory database
-				this.redoOnTable(log);
+				if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
+					this.redoOnTable(log);
+					if(preTrans.contains(log.xid)) //prepare phase need reacquire lock
+						try {
+							lm.lock(log.xid, myRMIName+log.key, LockManager.WRITE);
+						} catch (DeadlockException e) {
+							e.printStackTrace();
+						}
+				}
 			}
 		}
+		
 		// Undo phase
 		//HashSet<Integer> undoedOp = new HashSet<Integer>();
 		
+		//////////////////////undo here can use preLSN
 		for (int i = logs.size() - 1; i >= 0; i--) {
 			RMLog log = logs.get(i);
 			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE) {
-				if (!cmtTrans.contains(log.xid)) {
+				if (actTrans.contains(log.xid)) {
 					// undo in memory database
 					undoOnTable(log);
 					// write CLR log
 					RML.newLog(RMLog.CLR, log.xid, log.table, null, 
 							new Integer(log.LSN), // CLR log store corresponding LSN in beforeValue field
 							null);
+				}else{
+					if(actTrans.isEmpty())
+						break; //no need to continue
 				}
 			} 
 			/*else if (log.type == RMLog.CLR) {
@@ -367,7 +394,7 @@ public class ResourceManagerImpl
 	throws RemoteException, 
                InvalidTransactionException {
     	// releases its locks
-    	RML.newLog(RMLog.ABORT, xid, tableName, null, null, null);
+    	
     	ArrayList<RMLog> logs = RML.logQueueInMem();
     	for (int i = logs.size()-1; i >= 0; i--) {
     		RMLog log = logs.get(i);
@@ -380,7 +407,7 @@ public class ResourceManagerImpl
     			}
     		}
     	}
-    	
+    	RML.newLog(RMLog.ABORT, xid, tableName, null, null, null);
     	lm.unlockAll(xid);
     	return;
     }
@@ -1076,7 +1103,7 @@ class RMLog implements Serializable {
 	 public final int type;
 	 public final int LSN;
 	 public final int xid;
-	 
+	 public final int preLSN;
 	 /* Table Name
 	  * "flights";
 	  *	"rooms";
@@ -1089,9 +1116,10 @@ class RMLog implements Serializable {
 	 public final Object afterVal;
 
 
-	 public RMLog(int LSN, int type, int xid,
+	 public RMLog(int LSN, int preLSN, int type, int xid,
 			 String table, String key, Object beforeVal, Object afterVal) {
 		 this.LSN = LSN;
+		 this.preLSN = preLSN;
 		 this.type = type;
 		 this.xid = xid;
 		 this.table = table;
@@ -1127,6 +1155,9 @@ class RMLog implements Serializable {
 	 private int LSN;	// Latest Log Sequence Number
 	 private LinkedList<RMLog> logQueue = null; // the log sequence in the memory
 	 private ArrayList <RMLog> logSeq = null;
+	 
+	 private HashMap<Integer,Integer> TransLast = null;  //as lastLSN to set prevLSN and later optimization
+	 
 	 public RMLogManager(String tableName) throws ClassNotFoundException, IOException {
 		 RMName = tableName;
 		 logName = dirName + RMName + logSuffix;
@@ -1138,7 +1169,7 @@ class RMLog implements Serializable {
 		 }
 		 
 		 logQueue = new LinkedList<RMLog>();
-		 
+		 TransLast = new HashMap<Integer,Integer>();
 	 }
 
 	 /*
@@ -1194,7 +1225,13 @@ class RMLog implements Serializable {
 
 
 	 public void newLog(int type, int xid, String table, String key, Object before, Object after) {
-		 logQueue.addLast(new RMLog(++LSN, type, xid, table, key, before, after));
+		 int lastLSN = -1;
+		 if(TransLast.containsKey(xid)) {
+			 lastLSN = TransLast.get(xid);
+		 }
+		 TransLast.put(xid,++LSN);
+		 
+		 logQueue.addLast(new RMLog(LSN,lastLSN, type, xid, table, key, before, after));
 	 }
 
 
