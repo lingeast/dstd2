@@ -16,6 +16,7 @@ import java.io.Serializable;
 import java.rmi.*;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 
@@ -124,7 +125,85 @@ public class ResourceManagerImpl
     	} 
     }
 	
-	private void recover() throws ClassNotFoundException, IOException {
+	// Undo Operation on table
+	private void undoOnTable(RMLog log) {
+		if (log.type != RMLog.PUT && log.type != RMLog.REMOVE) {
+			throw new IllegalArgumentException("Can not undo type = " + log.type + "on table");
+		}
+		if (log.beforeVal != null) {
+			if (log.table.equals("flights")) {
+				this.flights.put(log.key, (Flight)log.beforeVal);
+			} else if  (log.table.equals("rooms")) {
+				this.hotels.put(log.key, (Hotel)log.beforeVal);
+			} else if  (log.table.equals("cars")) {
+				this.cars.put(log.key, (Car)log.beforeVal);
+			} else if  (log.table.equals("customers")) {
+				this.customers.put(log.key, (Customer)log.beforeVal);
+			} else if  (log.table.equals("reservations")) {
+				this.reservations.put(log.key, (ArrayList<Reservation>)log.beforeVal);
+			}
+		} else if (log.beforeVal == null) {
+			Object dummy = null;
+			if (log.table.equals("flights")) {
+				dummy = this.flights.remove(log.key);
+			} else if  (log.table.equals("rooms")) {
+				dummy = this.hotels.remove(log.key);
+			} else if  (log.table.equals("cars")) {
+				dummy = this.cars.remove(log.key);
+			} else if  (log.table.equals("customers")) {
+				dummy = this.customers.remove(log.key);
+			} else if  (log.table.equals("reservations")) {
+				dummy = this.reservations.remove(log.key);
+			}
+			if (dummy == null) {
+				throw new IllegalArgumentException("Remove unexist record");
+			}
+		} 
+		/*else {
+			throw new IllegalArgumentException("Can not redo type = " + log.type + "on table");
+		}*/
+	}
+	
+	// Redo Operation on table
+	private void redoOnTable(RMLog log) {
+		if (log.type != RMLog.PUT && log.type != RMLog.REMOVE) {
+			throw new IllegalArgumentException("Can not redo type = " + log.type + "on table");
+		}
+		if (log.afterVal != null) {
+			if (log.table.equals("flights")) {
+				this.flights.put(log.key, (Flight)log.afterVal);
+			} else if  (log.table.equals("rooms")) {
+				this.hotels.put(log.key, (Hotel)log.afterVal);
+			} else if  (log.table.equals("cars")) {
+				this.cars.put(log.key, (Car)log.afterVal);
+			} else if  (log.table.equals("customers")) {
+				this.customers.put(log.key, (Customer)log.afterVal);
+			} else if  (log.table.equals("reservations")) {
+				this.reservations.put(log.key, (ArrayList<Reservation>)log.afterVal);
+			}
+		} else if (log.afterVal == null) {
+			Object dummy = null;
+			if (log.table.equals("flights")) {
+				dummy = this.flights.remove(log.key);
+			} else if  (log.table.equals("rooms")) {
+				dummy = this.hotels.remove(log.key);
+			} else if  (log.table.equals("cars")) {
+				dummy = this.cars.remove(log.key);
+			} else if  (log.table.equals("customers")) {
+				dummy = this.customers.remove(log.key);
+			} else if  (log.table.equals("reservations")) {
+				dummy = this.reservations.remove(log.key);
+			}
+			if (dummy == null) {
+				throw new IllegalArgumentException("Remove unexist record");
+			}
+		} 
+		/*else {
+			throw new IllegalArgumentException("Can not redo type = " + log.type + "on table");
+		}*/
+	}
+	
+	private void recover() throws ClassNotFoundException, IOException, IllegalArgumentException {
 		//Analysis phase
 		FileOutputStream fos = null;
 		int pageLSN = -1;
@@ -141,8 +220,46 @@ public class ResourceManagerImpl
 			pageLSN = -1;
 		}
 		ArrayList<RMLog> logs = RML.LogSequenceAfter(pageLSN);
+		HashSet<Integer> actTrans = new HashSet<Integer>();
+		HashSet<Integer> cmtTrans = new HashSet<Integer>();
+		
+		for (RMLog log : logs) {
+			actTrans.add(log.xid);
+			if (log.type == RMLog.COMMIT) {
+				if (!cmtTrans.add(log.xid)) {
+					throw new IllegalArgumentException("same transaction commit twice!");
+				}
+			}
+		}
+		
 		//Redo phase
-		//Undo phase
+		for (RMLog log : logs) {
+			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE) {
+				// redo in memory database
+				this.redoOnTable(log);
+			}
+		}
+		// Undo phase
+		//HashSet<Integer> undoedOp = new HashSet<Integer>();
+		
+		for (int i = logs.size() - 1; i >= 0; i--) {
+			RMLog log = logs.get(i);
+			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE) {
+				if (!cmtTrans.contains(log.xid)) {
+					// undo in memory database
+					undoOnTable(log);
+					// write CLR log
+					RML.newLog(RMLog.CLR, log.xid, log.table, null, 
+							new Integer(log.LSN), // CLR log store corresponding LSN in beforeValue field
+							null);
+				}
+			} 
+			/*else if (log.type == RMLog.CLR) {
+				// Find CLR record and 
+				undoedOp.add((Integer)log.beforeVal);
+			}*/
+		}
+		
 	}
 
 	public boolean reconnect()
@@ -1018,21 +1135,20 @@ class RMLog implements Serializable {
 	 public static final int PREPARE = 5;
 
 
-	 int type;
+	 public final int type;
 	 public final int LSN;
 	 public final int xid;
+	 
 	 /* Table Name
-	  * "RMFlights";
-	  *	"RMRooms";
-	  *	"RMCars";
-	  *	"RMCustomers";
+	  * "flights";
+	  *	"rooms";
+	  *	"cars";
+	  *	"customers";
 	  */
-
-
 	 public final String table;
 	 public final String key;
-	 public Object beforeVal;
-	 public Object afterVal;
+	 public final Object beforeVal;
+	 public final Object afterVal;
 
 
 	 public RMLog(int LSN, int type, int xid,
@@ -1045,8 +1161,6 @@ class RMLog implements Serializable {
 		 this.beforeVal = beforeVal;
 		 this.afterVal = afterVal;
 	 }
-
-
  }
  /*
   * Log Manager for a Resourse Manager.
