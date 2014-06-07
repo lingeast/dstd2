@@ -1188,11 +1188,19 @@ class RMLog implements Serializable {
 
 	 private int LSN;	// Latest Log Sequence Number
 	 private LinkedList<RMLog> logQueue = null; // the log sequence in the memory
-	 public RMLogManager(String tableName) {
-		 // 
+	 private ArrayList <RMLog> logSeq = null;
+	 public RMLogManager(String tableName) throws ClassNotFoundException, IOException {
 		 RMName = tableName;
 		 logName = dirName + RMName + logSuffix;
+		 logSeq = this.LogSequenceInFile();
+		 if (logSeq.isEmpty()) {
+			 LSN = -1;
+		 } else {
+			 LSN = logSeq.get(logSeq.size() - 1).LSN;
+		 }
+		 
 		 logQueue = new LinkedList<RMLog>();
+		 
 	 }
 
 	 /*
@@ -1266,12 +1274,12 @@ class RMLog implements Serializable {
 		 oos.flush();
 		 fos.flush();
 	 }
-
-
-	 // return the log sequence after a specific LSN, used for recovery
-	 public ArrayList<RMLog> LogSequenceAfter(int LSN) 
-			 throws IOException, ClassNotFoundException {
-		 // TODO: read RMLog out from file stream
+	 
+	 /*
+	  * return log sequence on disk in ArrayList
+	  *   Empty ArrayList if no logs on disk
+	  */
+	 private ArrayList<RMLog> LogSequenceInFile() throws IOException, ClassNotFoundException {
 		 this.closeOutputStream();
 		 try {
 			 this.setInputStream();
@@ -1289,10 +1297,19 @@ class RMLog implements Serializable {
 				 // End of File
 				 break;
 			 }
-			 if (rmlog.LSN > LSN) {
 				 logList.add(rmlog);
-			 }
 		 }
 		 return logList;
+	 }
+
+
+	 // return the log sequence after a specific LSN, used for recovery
+	 public ArrayList<RMLog> LogSequenceAfter(int LSN) 
+			 throws IOException, ClassNotFoundException {
+		 int i = 0;
+		 while (this.logSeq.get(i).LSN <= LSN) {
+			 ++i;
+		 }
+		 return (ArrayList<RMLog>) logSeq.subList(i, logSeq.size());
 	 }
  }
