@@ -444,6 +444,18 @@ public class ResourceManagerImpl
 	throws RemoteException, 
                InvalidTransactionException {
     	// releases its locks
+    	ArrayList<RMLog> logs = RML.logQueueInMem();
+    	for (int i = logs.size(); i >= 0; i--) {
+    		RMLog log = logs.get(i);
+    		if (log.xid == xid) {
+    			if (log.type == RMLog.REMOVE || log.type == RMLog.PUT) {
+    				this.undoOnTable(log);
+    				RML.newLog(RMLog.CLR, log.xid, log.table, null, 
+							new Integer(log.LSN), // CLR log store corresponding LSN in beforeValue field
+							null);
+    			}
+    		}
+    	}
     	lm.unlockAll(xid);
     	return;
     }
@@ -1269,11 +1281,20 @@ class RMLog implements Serializable {
 	 public void flushLog(int LSN) throws IOException {
 		 this.closeInputStream();
 		 this.setOutputStream();
+		 /*
 		 while(!logQueue.isEmpty() && logQueue.peekFirst().LSN <= LSN) {
 			 oos.writeObject(logQueue.removeFirst());
 		 }
+		 */
+		 for (RMLog log : logQueue) {
+			 oos.writeObject(log);
+		 }
 		 oos.flush();
 		 fos.flush();
+	 }
+	 
+	 public ArrayList<RMLog> logQueueInMem() {
+		 return new ArrayList<RMLog>(this.logQueue);
 	 }
 	 
 	 /*
