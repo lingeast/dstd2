@@ -103,6 +103,27 @@ public class TransactionManagerImpl
 	@Override
 	public boolean abort(int xid) 
 			throws RemoteException{
+		HashSet<String> curtable = TransTrace.get(xid);
+		if(curtable==null) return false;
+		for(String RMIName: curtable){
+			try {
+				if(RMIName.equals(RMINameFlights))
+					rmFlights.abort(xid);
+				if(RMIName.equals(RMINameCars))
+					rmCars.abort(xid);
+				if(RMIName.equals(RMINameRooms))
+					rmRooms.abort(xid);
+				if(RMIName.equals(RMINameCustomers))
+					rmCustomers.abort(xid);
+			} catch (RemoteException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (InvalidTransactionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+				
+		}
 		// TODO Auto-generated method stub
 		return true;
 	}

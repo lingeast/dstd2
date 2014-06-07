@@ -85,6 +85,7 @@ public class WorkflowControllerImpl
     public void abort(int xid)
 	throws RemoteException, 
                InvalidTransactionException {
+    	tm.abort(xid);
 	return;
     }
 

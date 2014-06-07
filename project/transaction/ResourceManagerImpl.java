@@ -19,7 +19,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 
 /** 
  * Resource Manager for the Distributed Travel Reservation System.
@@ -40,7 +39,6 @@ public class ResourceManagerImpl
     private String dbName = null; // database file name
     private static String dirName = "data/";
     LockManager lm = new LockManager();
-    String[] file={"data/Pointer","data/Flights1","data/Flights2","data/Hotels1","data/Hotels2","data/Cars1","data/Cars2","data/Customers1","data/Customers2","data/Reservations1","data/Reservations2"};
 	
     // Use Hash Map to represent tables
     // flightNum as primary key
@@ -199,22 +197,42 @@ public class ResourceManagerImpl
 				throw new IllegalArgumentException("Remove unexist record");
 			}
 		} 
-		/*else {
-			throw new IllegalArgumentException("Can not redo type = " + log.type + "on table");
-		}*/
+
 	}
 	
 	private void recover() throws ClassNotFoundException, IOException, IllegalArgumentException {
 		//Analysis phase
-		FileOutputStream fos = null;
 		int pageLSN = -1;
+		ObjectInputStream ois = null;
 		try {
-			fos = new FileOutputStream(dbName);
+			ois = new ObjectInputStream(new FileInputStream(dbName));
 		} catch (FileNotFoundException fnfe) {
-			fos = null;
+			File newfile = new File(dbName);// creates the file  
+    		newfile.createNewFile();
 		}
-		if (fos != null) {
-			// has database on disk
+		if (ois != null) {
+			//recover the database
+	    	if(myRMIName.equals(RMINameFlights)){
+	    		flights = (HashMap <String, Flight>)ois.readObject();
+	    	}
+	    	if(myRMIName.equals(RMINameRooms)){
+	    		hotels = (HashMap <String, Hotel>)ois.readObject();
+	    	}
+	    	if(myRMIName.equals(RMINameCars)){
+	    		cars = (HashMap <String, Car>)ois.readObject();
+	    	}
+	    	if(myRMIName.equals(RMINameCustomers)){
+	    		customers = (HashMap <String, Customer>)ois.readObject();
+	    		try{
+	    			ois = new ObjectInputStream(new FileInputStream(this.dirName+ "reservations"));
+	    			reservations = (HashMap <String, ArrayList<Reservation>>)ois.readObject();
+		    	}catch(FileNotFoundException FN){
+		    		File newfile = new File(this.dirName+"reservations");
+		    		// creates the file  
+		    		newfile.createNewFile();
+		    	}
+	    	}
+			
 			// TODO: read LSN out
 		} else {
 			// no database on disk
@@ -291,36 +309,36 @@ public class ResourceManagerImpl
     private void push2file(Object obj,int type, int filenumber) throws FileNotFoundException, IOException{
     	ObjectOutputStream oos = null;
     	switch(type){
-    	case FLIGHT: 
-    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
-			oos.writeObject((HashMap <String, Flight>)obj);
-			oos.flush();
-			oos.close();
-			break;
-    	case HOTEL: 	
-    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
-			oos.writeObject((HashMap <String, Hotel>)obj);
-			oos.flush();
-			oos.close();
-			break;
-    	case CAR: 
-    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
-			oos.writeObject((HashMap <String, Car>)obj);
-			oos.flush();
-			oos.close();
-			break;
-    	case CUSTOMER: 
-    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
-			oos.writeObject((HashMap <String, Customer>)obj);
-			oos.flush();
-			oos.close();
-			break;
-    	case RESERVATION: 	
-    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
-			oos.writeObject((HashMap <String,  ArrayList<Reservation>>)obj);
-			oos.flush();
-			oos.close();
-			break;
+//    	case FLIGHT: 
+//    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
+//			oos.writeObject((HashMap <String, Flight>)obj);
+//			oos.flush();
+//			oos.close();
+//			break;
+//    	case HOTEL: 	
+//    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
+//			oos.writeObject((HashMap <String, Hotel>)obj);
+//			oos.flush();
+//			oos.close();
+//			break;
+//    	case CAR: 
+//    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
+//			oos.writeObject((HashMap <String, Car>)obj);
+//			oos.flush();
+//			oos.close();
+//			break;
+//    	case CUSTOMER: 
+//    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
+//			oos.writeObject((HashMap <String, Customer>)obj);
+//			oos.flush();
+//			oos.close();
+//			break;
+//    	case RESERVATION: 	
+//    		oos = new ObjectOutputStream(new FileOutputStream(file[filenumber]));
+//			oos.writeObject((HashMap <String,  ArrayList<Reservation>>)obj);
+//			oos.flush();
+//			oos.close();
+//			break;
     	}
     }
     
@@ -328,124 +346,20 @@ public class ResourceManagerImpl
 	throws RemoteException,TransactionAbortedException, 
 	       InvalidTransactionException {
     	System.out.println("Committing");
-    	
-    	/*TransRes finished = trans.remove(xid);
-    	if (finished == null) 
-    		assert(false);
-    	// update current to be shadow
-    	
-    	if (!finished.cars .isEmpty()) {
-    		HashMap <String, Car> cars_shadowing = new HashMap <String, Car>(cars);
-    		for (String key : finished.cars.keySet()) {
-    			if(finished.cars.get(key)!=null)
-    				cars_shadowing.put(key, finished.cars.get(key));
-    			else
-    				cars_shadowing.remove(key);
-    		}
-    		cars = cars_shadowing;
-    		//push to file[5] or file[6]
-			try{
-				push2file(cars,CAR,6-pointer[2]);
-			}catch(FileNotFoundException fnfe){
-				return false;
-			}catch(IOException io){
-				return false;
-			}
-			pointer[2] = 1-pointer[2];
-    	}
-    	
-    	if (!finished.hotels .isEmpty()){
-    		HashMap <String, Hotel> hotels_shadowing = new HashMap <String, Hotel>(hotels);
-    		for (String key : finished.hotels.keySet()) {
-    			if(finished.hotels.get(key)!=null)
-    				hotels_shadowing.put(key, finished.hotels.get(key));
-    			else
-    				hotels_shadowing.remove(key);
-    		}
-    		hotels = hotels_shadowing;
-    		//push to file[3] or file[4]
-			try{
-				push2file(hotels,HOTEL,4-pointer[1]);
-					
-			}catch(FileNotFoundException fnfe){
-				return false;
-			}catch(IOException io){
-				return false;
-			}
-			pointer[1] = 1-pointer[1];
-    	}
-    	
-    	if (!finished.flights .isEmpty()) {
-    		HashMap <String, Flight> flights_shadowing = new HashMap <String, Flight>(flights);
-    		for (String key : finished.flights.keySet()) {
-    			if(finished.flights.get(key)!=null)
-    				flights_shadowing.put(key, finished.flights.get(key));
-    			else
-    				flights_shadowing.remove(key);
-    		}
-    		flights =  flights_shadowing;
-    		//push to file[1] or file[2]
-			try{
-				push2file(flights,FLIGHT,2-pointer[0]);
-			}catch(FileNotFoundException fnfe){
-				return false;
-			}catch(IOException io){
-				return false;
-			}
-			pointer[0] = 1-pointer[0];
-    	}
-    	
-    	if (!finished.customers .isEmpty()){
-    		HashMap <String, Customer> customers_shadowing = new HashMap <String, Customer>(customers);
-    		for (String key : finished.customers.keySet()) {
-    			if(finished.customers.get(key)!=null)
-    				customers_shadowing.put(key, finished.customers.get(key));
-    			else
-    				customers_shadowing.remove(key);
-    		}
-    		customers = customers_shadowing;
-    		//push to file[7] or file[8]
-			try{
-				push2file(customers,CUSTOMER,8-pointer[3]);
-			}catch(FileNotFoundException fnfe){
-				return false;
-			}catch(IOException io){
-				return false;
-			}
-			pointer[3] = 1-pointer[3];
-    	}
- 
-    	if (!finished.reservations .isEmpty()) {
-    		HashMap <String, ArrayList<Reservation>> reservations_shadowing = new HashMap <String, ArrayList<Reservation>>(reservations);
-    		for (String key : finished.reservations.keySet()) {
-    			if(finished.reservations.get(key)!=null)
-    				reservations_shadowing.put(key, finished.reservations.get(key));
-    			else
-    				reservations_shadowing.remove(key);
-    		}
-    		reservations = reservations_shadowing;
-    		//push to file[9] or file[10]
-			try{
-				push2file(reservations,RESERVATION,10-pointer[4]);
-			}catch(FileNotFoundException fnfe){
-				return false;
-			}catch(IOException io){
-				return false;
-			}
-			pointer[4] = 1-pointer[4];
-    	}*/
+    	RML.newLog(RMLog.COMMIT, xid, tableName, null, null, null);
 
     	lm.unlockAll(xid);
     	
-    	return true; //page shadowing implies page level locking, always return true
+    	return true;
     }
 
     public void abort(int xid)  
 	throws RemoteException, 
                InvalidTransactionException {
     	// releases its locks
+    	RML.newLog(RMLog.ABORT, xid, tableName, null, null, null);
     	ArrayList<RMLog> logs = RML.logQueueInMem();
-    	for (int i = logs.size(); i >= 0; i--) {
+    	for (int i = logs.size()-1; i >= 0; i--) {
     		RMLog log = logs.get(i);
     		if (log.xid == xid) {
     			if (log.type == RMLog.REMOVE || log.type == RMLog.PUT) {
@@ -456,6 +370,7 @@ public class ResourceManagerImpl
     			}
     		}
     	}
+    	
     	lm.unlockAll(xid);
     	return;
     }
