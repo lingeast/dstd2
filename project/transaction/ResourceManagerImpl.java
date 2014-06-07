@@ -209,7 +209,11 @@ public class ResourceManagerImpl
 		} catch (FileNotFoundException fnfe) {
 			File newfile = new File(dbName);// creates the file  
     		newfile.createNewFile();
+		}catch (IOException io) {
+			File newfile = new File(dbName);// creates the file  
+    		newfile.createNewFile();
 		}
+		
 		if (ois != null) {
 			//recover the database
 	    	if(myRMIName.equals(RMINameFlights)){
@@ -225,12 +229,18 @@ public class ResourceManagerImpl
 	    		customers = (HashMap <String, Customer>)ois.readObject();
 	    		try{
 	    			ois = new ObjectInputStream(new FileInputStream(this.dirName+ "reservations"));
-	    			reservations = (HashMap <String, ArrayList<Reservation>>)ois.readObject();
+	    			if(ois!=null)
+	    				reservations = (HashMap <String, ArrayList<Reservation>>)ois.readObject();
 		    	}catch(FileNotFoundException FN){
 		    		File newfile = new File(this.dirName+"reservations");
 		    		// creates the file  
 		    		newfile.createNewFile();
 		    	}
+	    		catch (IOException io) {
+		    		File newfile = new File(this.dirName+"reservations");
+		    		// creates the file  
+		    		newfile.createNewFile();
+	    		}
 	    	}
 			
 			// TODO: read LSN out
