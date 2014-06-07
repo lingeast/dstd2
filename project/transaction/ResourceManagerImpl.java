@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 
 /** 
@@ -219,7 +220,7 @@ public class ResourceManagerImpl
 			// no database on disk
 			pageLSN = -1;
 		}
-		ArrayList<RMLog> logs = RML.LogSequenceAfter(pageLSN);
+		List<RMLog> logs = RML.LogSequenceAfter(pageLSN);
 		HashSet<Integer> actTrans = new HashSet<Integer>();
 		HashSet<Integer> cmtTrans = new HashSet<Integer>();
 		
@@ -1304,12 +1305,12 @@ class RMLog implements Serializable {
 
 
 	 // return the log sequence after a specific LSN, used for recovery
-	 public ArrayList<RMLog> LogSequenceAfter(int LSN) 
+	 public List<RMLog> LogSequenceAfter(int LSN) 
 			 throws IOException, ClassNotFoundException {
 		 int i = 0;
-		 while (this.logSeq.get(i).LSN <= LSN) {
-			 ++i;
+		 for (;i < logSeq.size(); i++) {
+			 if (logSeq.get(i).LSN > LSN) break;
 		 }
-		 return (ArrayList<RMLog>) logSeq.subList(i, logSeq.size());
+		 return  logSeq.subList(i, logSeq.size());
 	 }
  }
