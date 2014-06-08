@@ -166,7 +166,9 @@ public class ResourceManagerImpl
 	
 	// Redo Operation on table
 	private void redoOnTable(RMLog log) {
-		if (log.type != RMLog.PUT && log.type != RMLog.REMOVE) {
+		if (log.type != RMLog.PUT 
+				&& log.type != RMLog.REMOVE 
+				&& log.type != RMLog.CLR) {
 			throw new IllegalArgumentException("Can not redo type = " + log.type + "on table");
 		}
 		if (log.afterVal != null) {
