@@ -159,6 +159,11 @@ public class ResourceManagerImpl
 				throw new IllegalArgumentException("Remove unexist record");
 			}
 		} 
+		//move to here to reduce redundant codes. The LSN saved here had better be UndoNxtLSN(lessen future work). 
+		//Done it at newLog(), UndoNxtLSN = preLSN of the undoing LSN
+		RML.newLog(RMLog.CLR, log.xid, log.LSN, log.table, log.key, 
+				log.afterVal, 
+				log.beforeVal);
 		/*else {
 			throw new IllegalArgumentException("Can not redo type = " + log.type + "on table");
 		}*/
@@ -267,28 +272,38 @@ public class ResourceManagerImpl
 					throw new IllegalArgumentException("same transaction commit twice!");
 				}
 				actTrans.remove(log.xid);
+				preTrans.remove(log.xid);   //should remove preparing transaction
 			}else if(log.type == RMLog.ABORT){  //no need to redo or undo aborted transaction(only for higher efficiency)
 				if (!abtTrans.add(log.xid)) {
 					throw new IllegalArgumentException("same transaction abort twice!");
 				}
 				actTrans.remove(log.xid);
+				preTrans.remove(log.xid);
 			}else if(log.type == RMLog.PREPARE){  // need to redo and get lock again..
 				if (!preTrans.add(log.xid)) {
 					throw new IllegalArgumentException("same transaction prepare twice!");
 				}
 				actTrans.remove(log.xid);
 			}
-		}
+		}			
 		
 		//Redo phase
 		System.out.println("Redo Phase");
+		boolean preparing = false;
+		int preparingXID = -1;
+		if(!preTrans.isEmpty())
+			preparing = true;
+			else if(preTrans.size() == 1) {
+				preparingXID = preTrans.toArray(new Integer[1])[0];
+			}else  
+				System.err.println("impossible for more than one preparing transactions");
 		for (RMLog log : logs) {
 			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE ) {
 				// redo in memory database
 				if (true) { //redo all now, including aborted transactions and their CLRs
 				//if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
 					this.redoOnTable(log);
-					if(preTrans.contains(log.xid)) //prepare phase need reacquire lock
+					if(preparing&&log.xid==preparingXID) //prepare phase need reacquire lock
 						try {
 							lm.lock(log.xid, myRMIName+log.key, LockManager.WRITE);
 						} catch (DeadlockException e) {
@@ -299,7 +314,7 @@ public class ResourceManagerImpl
 		}
 		
 		// Undo phase
-		//HashSet<Integer> undoedOp = new HashSet<Integer>();
+
 		
 		//////////////////////undo here can use preLSN
 		System.out.println("Undo Phase");
@@ -310,12 +325,7 @@ public class ResourceManagerImpl
 					// write CLR log
 					// CLR = redo-only log, beforeVal and after Val are exact inverse
 					undoOnTable(log);
-					RML.newLog(RMLog.CLR, log.xid, log.LSN, log.table, log.key, 
-							log.afterVal, 
-							log.beforeVal);
 					// undo in memory database
-					
-
 				}else{
 					if(actTrans.isEmpty())
 						break; //no need to continue
@@ -326,10 +336,13 @@ public class ResourceManagerImpl
 				undoedOp.add((Integer)log.beforeVal);
 			}*/
 		}
-		
+
 		if (ois != null) {
 			ois.close();
 		}
+		//if preparing..should handle it.
+		if(preparing)
+			;//tm.checkpre(preparingXID);
 		
 	}
 
@@ -426,9 +439,6 @@ public class ResourceManagerImpl
     		if (log.xid == xid) {
     			if (log.type == RMLog.REMOVE || log.type == RMLog.PUT) {
     				this.undoOnTable(log);
-    				RML.newLog(RMLog.CLR, log.xid, log.LSN, log.table, log.key, 
-							log.afterVal, // CLR log store corresponding LSN in beforeValue field
-							log.beforeVal);
     			}
     		}
     	}
@@ -1257,7 +1267,7 @@ class RMLog implements Serializable {
 			 throw new IllegalArgumentException("non-CLR Should not call this method");
 		 }
 
-		 
+		 chainLSN = logQueue.get(chainLSN).preLSN;  //UndoNxtLSN = preLSN of the undoing LSN
 		 logQueue.addLast(new RMLog(LSN, chainLSN, type, xid, table, key, before, after));
 	 }
 	 
