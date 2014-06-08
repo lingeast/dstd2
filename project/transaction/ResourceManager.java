@@ -1,6 +1,8 @@
 package transaction;
 
+import java.io.Serializable;
 import java.rmi.*;
+import java.util.ArrayList;
 
 /** 
  * Interface for the Resource Manager of the Distributed Travel
@@ -33,21 +35,21 @@ public interface ResourceManager extends Remote {
     //////////
     // ADMINISTRATIVE INTERFACE
     //////////
-    /**
-     * Prepare for commit transaction.
-     *
-     * @param xid id of transaction to be preparing.
-     * @return true on success, false on failure.
-     *
-     * @throws RemoteException on communications failure.
-     * @throws TransactionAbortedException if transaction was aborted.
-     * @throws InvalidTransactionException if transaction id is invalid.
-     */
-    public boolean prepare(int xid) 
-    throws RemoteException,
-    TransactionAbortedException,
-    InvalidTransactionException;
-    
+	/**
+	     * Prepare for commit transaction.
+	     *
+	     * @param xid id of transaction to be preparing.
+	     * @return true on success, false on failure.
+	     *
+	     * @throws RemoteException on communications failure.
+	     * @throws TransactionAbortedException if transaction was aborted.
+	     * @throws InvalidTransactionException if transaction id is invalid.
+	*/
+	    public boolean prepare(int xid) 
+	    throws RemoteException,
+	    TransactionAbortedException,
+	    InvalidTransactionException;
+
     /**
      * Commit transaction.
      *
@@ -266,7 +268,7 @@ public interface ResourceManager extends Remote {
 	       InvalidTransactionException; 
 
     /* Return the total price of all reservations held for a customer. */
-	public int queryCustomerBill(int xid, String custName)
+	public ArrayList<Reservation> queryCustomerReservations(int xid, String custName)
 	    throws RemoteException,
 		   TransactionAbortedException,
 		   InvalidTransactionException;
@@ -304,4 +306,17 @@ public interface ResourceManager extends Remote {
 	       InvalidTransactionException;
     
 
+}
+class Reservation implements Serializable{
+	String custName;
+	int resvType;
+	String resvKey;
+	//int price; //for possible calculate
+	Reservation(String name,int resvT,String resvK){//int pric
+		custName=name;
+		resvType=resvT;
+		resvKey=resvK;
+		//price=pric;
+		
+	}
 }

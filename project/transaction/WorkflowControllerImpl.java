@@ -1,7 +1,9 @@
 package transaction;
 
+import java.io.Serializable;
 import java.rmi.*;
 import java.util.*;
+
 
 /** 
  * Workflow Controller for the Distributed Travel Reservation System.
@@ -77,8 +79,7 @@ public class WorkflowControllerImpl
 	       TransactionAbortedException, 
 	       InvalidTransactionException {
     	System.out.println("Committing");
-    	// TODO: should be xid not xidCounter
-    	if(!tm.commit(xidCounter))
+    	if(!tm.commit(xid))
     		return false;
     	return true;
     }
@@ -238,10 +239,29 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
+    	
+    	ArrayList<Reservation> curRevlist = rmCustomers.queryCustomerReservations(xid, custName);
     	tm.enlist(xid, "RMCustomers");
-    	tm.enlist(xid, "RMCars");
-    	tm.enlist(xid, "RMFlights");
-    	return 0;
+    	if(curRevlist.isEmpty())
+    		return 0;
+    	
+    	int total = 0;
+    	for(Reservation rev : curRevlist){
+    		if(rev.resvType == transaction.ResourceManager.FLIGHT)  {
+    			tm.enlist(xid, "RMFlights");
+    			total += rmFlights.queryFlightPrice(xid, rev.resvKey);;
+    		}else
+    		if(rev.resvType == transaction.ResourceManager.CAR)  {
+    			tm.enlist(xid, "RMCars");
+    			total += rmCars.queryCarsPrice(xid, rev.resvKey);;
+    		}else
+    		if(rev.resvType == transaction.ResourceManager.HOTEL)  {
+    			tm.enlist(xid, "RMRooms");
+    			total += rmRooms.queryRoomsPrice(xid, rev.resvKey);;
+    		}
+    	}
+    	//rmFlights.queryFlightPrice(xid, flightNum);
+    	return total;
     }
 
 
@@ -425,4 +445,5 @@ public class WorkflowControllerImpl
 	throws RemoteException {
 	return true;
     }
+    
 }

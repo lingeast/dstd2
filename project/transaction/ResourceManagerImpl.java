@@ -291,12 +291,14 @@ public class ResourceManagerImpl
 		System.out.println("Redo Phase");
 		boolean preparing = false;
 		int preparingXID = -1;
-		if(!preTrans.isEmpty())
+		if(!preTrans.isEmpty()){
 			preparing = true;
-			else if(preTrans.size() == 1) {
+			if(preTrans.size() == 1) {
 				preparingXID = preTrans.toArray(new Integer[1])[0];
 			}else  
 				System.err.println("impossible for more than one preparing transactions");
+		}
+		
 		for (RMLog log : logs) {
 			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE ) {
 				// redo in memory database
@@ -832,13 +834,18 @@ public class ResourceManagerImpl
 
     }
 
-    public int queryCustomerBill(int xid, String custName)
+    public ArrayList<Reservation> queryCustomerReservations(int xid, String custName)
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
-    	int total=0;
-    	///////////not implement yet
-    	return total;
+   		try {
+			lm.lock(xid, "reservations"+custName, LockManager.READ);
+		} catch (DeadlockException e) {
+			e.printStackTrace();
+			return null;
+		}  
+    	ArrayList<Reservation> curRevlist = reservations.get(custName);
+    	return curRevlist;
     }
 
     // Reservation INTERFACE
@@ -1113,19 +1120,7 @@ public class ResourceManagerImpl
 	}
 }
 
- class Reservation implements Serializable{
-	String custName;
-	int resvType;
-	String resvKey;
-	//int price; //for possible calculate
-	Reservation(String name,int resvT,String resvK){//int pric
-		custName=name;
-		resvType=resvT;
-		resvKey=resvK;
-		//price=pric;
-		
-	}
-}
+
 
 
  
