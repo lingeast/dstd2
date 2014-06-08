@@ -892,7 +892,8 @@ public class ResourceManagerImpl
         		}
         	Reservation rev = new Reservation(custName,FLIGHT,flightNum);
         	curRevlist.add(rev);
-            RML.newLog(RMLog.PUT, xid, tableName, custName, oldRevlist, curRevlist);
+        	// Revise table = "reservations"
+            RML.newLog(RMLog.PUT, xid, "reservations", custName, oldRevlist, curRevlist);
         	return true;
     		
     	}else{
@@ -945,7 +946,7 @@ public class ResourceManagerImpl
         		}
         	Reservation rev = new Reservation(custName,CAR,location);
         	curRevlist.add(rev);
-            RML.newLog(RMLog.PUT, xid, tableName, custName, oldRevlist, curRevlist);
+            RML.newLog(RMLog.PUT, xid, "reservations", custName, oldRevlist, curRevlist);
         	return true;
     		
     	}else{
@@ -983,7 +984,7 @@ public class ResourceManagerImpl
     	}else
     	if(myRMIName.equals(RMINameCustomers)){
     		try {
-    			lm.lock(xid, "reservations"+custName, LockManager.WRITE);
+    			lm.lock(xid, "reservations" + custName, LockManager.WRITE);
     		} catch (DeadlockException e) {
     			e.printStackTrace();
     			return false;
@@ -998,7 +999,7 @@ public class ResourceManagerImpl
         		}
         	Reservation rev = new Reservation(custName,HOTEL,location);
         	curRevlist.add(rev);
-            RML.newLog(RMLog.PUT, xid, tableName, custName, oldRevlist, curRevlist);
+            RML.newLog(RMLog.PUT, xid, "reservations", custName, oldRevlist, curRevlist);
         	return true;
     		
     	}else{
