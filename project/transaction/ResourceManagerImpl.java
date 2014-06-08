@@ -116,8 +116,9 @@ public class ResourceManagerImpl
     	}
     	
     	RML = new RMLogManager(tableName);
-    	this.recover();
     	
+    	this.recover();
+    	System.out.println("After Recovery");
 
     	while (!reconnect()) {
     	    // would be better to sleep a while
@@ -157,9 +158,7 @@ public class ResourceManagerImpl
 			if (dummy == null) {
 				throw new IllegalArgumentException("Remove unexist record");
 			}
-		} //should write CLRs
-		
-		  RML.newLog(RMLog.CLR, log.xid, tableName, log.key, log.afterVal, log.beforeVal);
+		} 
 		/*else {
 			throw new IllegalArgumentException("Can not redo type = " + log.type + "on table");
 		}*/
@@ -250,11 +249,15 @@ public class ResourceManagerImpl
 			// no database on disk
 			pageLSN = -1;
 		}
+		System.out.println("Recover from disk FINISHED\n");
+		
 		List<RMLog> logs = RML.LogSequenceAfter(pageLSN);
 		HashSet<Integer> actTrans = new HashSet<Integer>();
 		HashSet<Integer> cmtTrans = new HashSet<Integer>();
 		HashSet<Integer> abtTrans = new HashSet<Integer>();
 		HashSet<Integer> preTrans = new HashSet<Integer>();
+		
+		System.out.println("Reconstruct Transaction Table");
 		for (RMLog log : logs) {
 			actTrans.add(log.xid);
 			if (log.type == RMLog.COMMIT) {
@@ -276,10 +279,12 @@ public class ResourceManagerImpl
 		}
 		
 		//Redo phase
+		System.out.println("Redo Phase");
 		for (RMLog log : logs) {
 			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE ) {
 				// redo in memory database
-				if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
+				if (true) { //redo all now, including aborted transactions and their CLRs
+				//if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
 					this.redoOnTable(log);
 					if(preTrans.contains(log.xid)) //prepare phase need reacquire lock
 						try {
@@ -295,16 +300,20 @@ public class ResourceManagerImpl
 		//HashSet<Integer> undoedOp = new HashSet<Integer>();
 		
 		//////////////////////undo here can use preLSN
+		System.out.println("Undo Phase");
 		for (int i = logs.size() - 1; i >= 0; i--) {
 			RMLog log = logs.get(i);
 			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE) {
 				if (actTrans.contains(log.xid)) {
-					// undo in memory database
-					undoOnTable(log);
 					// write CLR log
-					RML.newLog(RMLog.CLR, log.xid, log.table, null, 
-							new Integer(log.LSN), // CLR log store corresponding LSN in beforeValue field
-							null);
+					// CLR = redo-only log, beforeVal and after Val are exact inverse
+					undoOnTable(log);
+					RML.newLog(RMLog.CLR, log.xid, log.LSN, log.table, log.key, 
+							log.afterVal, 
+							log.beforeVal);
+					// undo in memory database
+					
+
 				}else{
 					if(actTrans.isEmpty())
 						break; //no need to continue
@@ -314,6 +323,10 @@ public class ResourceManagerImpl
 				// Find CLR record and 
 				undoedOp.add((Integer)log.beforeVal);
 			}*/
+		}
+		
+		if (ois != null) {
+			ois.close();
 		}
 		
 	}
@@ -379,6 +392,17 @@ public class ResourceManagerImpl
     	}
     }
     
+    public boolean prepare(int xid) 	
+    throws RemoteException,
+    TransactionAbortedException, 
+    InvalidTransactionException {
+    	System.out.println("Preparing");
+    	RML.newLog(RMLog.PREPARE, xid, tableName, null, null, null);
+    	// RM does not release any locks before committing
+    	// 
+    	return true;
+    }
+    
     public boolean commit(int xid)
 	throws RemoteException,TransactionAbortedException, 
 	       InvalidTransactionException {
@@ -393,21 +417,23 @@ public class ResourceManagerImpl
     public void abort(int xid)  
 	throws RemoteException, 
                InvalidTransactionException {
-    	// releases its locks
-    	
+    	// locks acquired during DO operations are enough
     	ArrayList<RMLog> logs = RML.logQueueInMem();
     	for (int i = logs.size()-1; i >= 0; i--) {
     		RMLog log = logs.get(i);
     		if (log.xid == xid) {
     			if (log.type == RMLog.REMOVE || log.type == RMLog.PUT) {
     				this.undoOnTable(log);
-    				RML.newLog(RMLog.CLR, log.xid, log.table, null, 
-							new Integer(log.LSN), // CLR log store corresponding LSN in beforeValue field
-							null);
+    				RML.newLog(RMLog.CLR, log.xid, log.LSN, log.table, log.key, 
+							log.afterVal, // CLR log store corresponding LSN in beforeValue field
+							log.beforeVal);
     			}
     		}
     	}
+    	// new abort lock after aborting finished
+    	// this order should be fixed
     	RML.newLog(RMLog.ABORT, xid, tableName, null, null, null);
+    	// releases its locks
     	lm.unlockAll(xid);
     	return;
     }
@@ -1223,16 +1249,37 @@ class RMLog implements Serializable {
 			 fis.close(); // redundant
 	 }
 
-
-	 public void newLog(int type, int xid, String table, String key, Object before, Object after) {
-		 int lastLSN = -1;
-		 if(TransLast.containsKey(xid)) {
-			 lastLSN = TransLast.get(xid);
+	 
+	 public void newLog(int type, int xid, int chainLSN, String table, String key, Object before, Object after) {
+		 if (type != RMLog.CLR) {
+			 throw new IllegalArgumentException("non-CLR Should not call this method");
 		 }
-		 TransLast.put(xid,++LSN);
+
 		 
-		 logQueue.addLast(new RMLog(LSN,lastLSN, type, xid, table, key, before, after));
+		 logQueue.addLast(new RMLog(LSN, chainLSN, type, xid, table, key, before, after));
 	 }
+	 
+	 public void newLog(int type, int xid, String table, String key, Object before, Object after) {
+		 if (type == RMLog.CLR) {
+			 throw new IllegalArgumentException("CLR shouldn't call this method");
+		 } 
+		 
+		 int lastLSN = -1;
+		 // if DO operation log, then find its prevLSN
+		 if (type == RMLog.PUT || type == RMLog.REMOVE) {
+			 if(TransLast.containsKey(xid)) {
+				 lastLSN = TransLast.get(xid);
+			 }
+			 TransLast.put(xid,++LSN);
+		 } 
+		 
+		 logQueue.addLast(new RMLog(LSN, lastLSN, type, xid, table, key, before, after));
+		 
+		 if (type == RMLog.ABORT || type == RMLog.COMMIT) {
+			 this.TransLast.remove(xid);
+		 }
+	 }
+	 
 
 
 	 /*
@@ -1290,6 +1337,7 @@ class RMLog implements Serializable {
 	 // return the log sequence after a specific LSN, used for recovery
 	 public List<RMLog> LogSequenceAfter(int LSN) 
 			 throws IOException, ClassNotFoundException {
+		 
 		 int i = 0;
 		 for (;i < logSeq.size(); i++) {
 			 if (logSeq.get(i).LSN > LSN) break;

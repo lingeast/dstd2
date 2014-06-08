@@ -34,6 +34,21 @@ public interface ResourceManager extends Remote {
     // ADMINISTRATIVE INTERFACE
     //////////
     /**
+     * Prepare for commit transaction.
+     *
+     * @param xid id of transaction to be preparing.
+     * @return true on success, false on failure.
+     *
+     * @throws RemoteException on communications failure.
+     * @throws TransactionAbortedException if transaction was aborted.
+     * @throws InvalidTransactionException if transaction id is invalid.
+     */
+    public boolean prepare(int xid) 
+    throws RemoteException,
+    TransactionAbortedException,
+    InvalidTransactionException;
+    
+    /**
      * Commit transaction.
      *
      * @param xid id of transaction to be committed.

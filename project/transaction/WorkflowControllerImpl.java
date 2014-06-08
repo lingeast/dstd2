@@ -77,6 +77,7 @@ public class WorkflowControllerImpl
 	       TransactionAbortedException, 
 	       InvalidTransactionException {
     	System.out.println("Committing");
+    	// TODO: should be xid not xidCounter
     	if(!tm.commit(xidCounter))
     		return false;
     	return true;
