@@ -29,7 +29,7 @@ public interface TransactionManager extends Remote {
     public boolean abort(int  xid)
     		throws RemoteException;
     public boolean enlist(int  xid, String  RMIName)
-    		throws RemoteException;
+    		throws RemoteException, InvalidTransactionException;
     
     /** The RMI name a TransactionManager binds to. */
     public static final String RMIName = "TM";

@@ -88,7 +88,7 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
                InvalidTransactionException {
     	tm.abort(xid);
-	return;
+    	return;
     }
 
 
@@ -270,10 +270,10 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
+    	tm.enlist(xid, "RMCustomers");
+    	tm.enlist(xid, "RMFlights");
     	if(rmFlights.reserveFlight(xid, custName, flightNum))
     		if(rmCustomers.reserveFlight(xid, custName, flightNum)){
-    	    	tm.enlist(xid, "RMCustomers");
-    	    	tm.enlist(xid, "RMFlights");
     			return true;
     		}
     	//flightcounter--;
@@ -284,10 +284,10 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
+	    tm.enlist(xid, "RMCustomers");
+    	tm.enlist(xid, "RMCars");
     	if(rmCars.reserveCar(xid, custName, location))
     		if(rmCustomers.reserveCar(xid, custName, location)){
-      	    	tm.enlist(xid, "RMCustomers");
-    	    	tm.enlist(xid, "RMCars");
     	    	return true;
     		}
     			
@@ -300,10 +300,10 @@ public class WorkflowControllerImpl
 	throws RemoteException, 
 	       TransactionAbortedException,
 	       InvalidTransactionException {
+	    tm.enlist(xid, "RMCustomers");
+    	tm.enlist(xid, "RMRooms");
     	if(rmRooms.reserveRoom(xid, custName, location))
     		if(rmCustomers.reserveRoom(xid, custName, location)){
-      	    	tm.enlist(xid, "RMCustomers");
-    	    	tm.enlist(xid, "RMRooms");
     	    	return true;
     		}
     return false;

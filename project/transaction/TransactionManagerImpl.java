@@ -96,6 +96,7 @@ public class TransactionManagerImpl
 			}
 				
 		}
+		TransTrace.remove(curtable);
 		return true;
 	}
 
@@ -106,14 +107,15 @@ public class TransactionManagerImpl
 		HashSet<String> curtable = TransTrace.get(xid);
 		if(curtable==null) return false;
 		for(String RMIName: curtable){
+		
 			try {
 				if(RMIName.equals(RMINameFlights))
 					rmFlights.abort(xid);
-				if(RMIName.equals(RMINameCars))
+				else if(RMIName.equals(RMINameCars))
 					rmCars.abort(xid);
-				if(RMIName.equals(RMINameRooms))
+				else if(RMIName.equals(RMINameRooms))
 					rmRooms.abort(xid);
-				if(RMIName.equals(RMINameCustomers))
+				else if(RMIName.equals(RMINameCustomers))
 					rmCustomers.abort(xid);
 			} catch (RemoteException e) {
 				// TODO Auto-generated catch block
@@ -124,6 +126,7 @@ public class TransactionManagerImpl
 			}
 				
 		}
+		TransTrace.remove(curtable);
 		// TODO Auto-generated method stub
 		return true;
 	}
@@ -163,16 +166,17 @@ public class TransactionManagerImpl
 	}
 	@Override
 	public boolean enlist(int xid, String RMIName) 
-			throws RemoteException{
+			throws RemoteException,InvalidTransactionException{
 		// TODO Auto-generated method stub
 		HashSet<String> curtable = TransTrace.get(xid);
-		if(curtable==null) return false;
+		if(curtable==null) throw new InvalidTransactionException(xid, RMIName);
 		if(!flag_ref){
 			if(connect())
 				flag_ref = true;
 		}
 			
 		curtable.add(RMIName);
+		
 		return true;
 	}
 
