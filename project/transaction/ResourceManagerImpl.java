@@ -449,7 +449,7 @@ public class ResourceManagerImpl
     	// what happens if committed or aborted??
     	// if the transaction make updates before, it will exist in log manager's actTrans or commited/aborted.
     	if(!RML.ActTransMap().containsKey(xid)){  //not prepare...or exist
-			throw new TransactionAbortedException(xid,"not exist");
+    		throw new TransactionAbortedException(xid,"not exist");
 		}
     	RML.newLog(RMLog.PREPARE, xid, tableName, null, null, null);
     	// RM does not release any locks before committing
@@ -475,7 +475,7 @@ public class ResourceManagerImpl
     public void abort(int xid)  //2 cases when call abort: 1. normal 2. after recover 
 	throws RemoteException {
     	// locks acquired during DO operations are enough
-    	if(cmtTransactions.contains(xid)) { //already committed, can't abort
+    	if(cmtTransactions.contains(xid)||!RML.ActTransMap().containsKey(xid)) { //already committed, can't abort
     		return;
     	}
     	ArrayList<RMLog> logs = RML.logQueueInMem();

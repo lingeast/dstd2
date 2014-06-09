@@ -79,20 +79,23 @@ public class TransactionManagerImpl
 		boolean vote = true;
 		
 		//send prepare and see what happen
+		try{
 		for(String RMIName: curtable){
 				System.out.println("send prepare to "+RMIName);
 				if(RMIName.equals(RMINameFlights))
-					{if(!rmFlights.prepare(xid))
-						vote = false;}
+					rmFlights.prepare(xid);
+						
 				if(RMIName.equals(RMINameCars))
-					{if(!rmCars.prepare(xid))
-						vote = false;}
+					rmCars.prepare(xid);
+						
 				if(RMIName.equals(RMINameRooms))
-					{if(!rmRooms.prepare(xid))
-						vote = false;}
+					rmRooms.prepare(xid);
+						
 				if(RMIName.equals(RMINameCustomers))
-					{if(!rmCustomers.prepare(xid))
-						vote = false;}
+					rmCustomers.prepare(xid);
+						
+		}} catch(TransactionAbortedException tbrt){
+			vote = false;
 		}
 
 		//send commit or abort  //here should be logged
