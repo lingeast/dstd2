@@ -47,8 +47,7 @@ public interface ResourceManager extends Remote {
 	*/
 	    public boolean prepare(int xid) 
 	    throws RemoteException,
-	    TransactionAbortedException,
-	    InvalidTransactionException;
+	    TransactionAbortedException;
 
     /**
      * Commit transaction.
@@ -62,8 +61,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean commit(int xid) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
     /**
      * Abort transaction.
      *
@@ -73,8 +71,7 @@ public interface ResourceManager extends Remote {
      * @throws InvalidTransactionException if transaction id is invalid.
      */
     public void abort(int xid) 
-	throws RemoteException, 
-	       InvalidTransactionException; 
+	throws RemoteException; 
     /**
      * Add seats to a flight.  In general this will be used to create
      * a new flight, but it should be possible to add seats to an
@@ -94,8 +91,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean addFlight(int xid, String flightNum, int numSeats, int price) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
     /**
      * Delete an entire flight.
      * Implies whole deletion of the flight: all seats, all reservations.
@@ -111,8 +107,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean deleteFlight(int xid, String flightNum) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
     
     /**
      * Add rooms to a location.  
@@ -129,8 +124,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean addRooms(int xid, String location, int numRooms, int price) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException;
+	       TransactionAbortedException;
     /**
      * Delete rooms from a location.
      * This subtracts from the available room count (rooms not allocated
@@ -147,8 +141,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean deleteRooms(int xid, String location, int numRooms) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
     
     /** 
      * Add cars to a location.
@@ -165,8 +158,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean addCars(int xid, String location, int numCars, int price) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
     /**
      * Delete cars from a location.
      * Cars have the same semantics as hotels.
@@ -182,8 +174,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean deleteCars(int xid, String location, int numCars) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
     
     /** 
      * Add a new customer to database.  Should return success if
@@ -199,8 +190,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean newCustomer(int xid, String custName) 
 	throws RemoteException,
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
     /**
      * Delete this customer and associated reservations.
      *
@@ -214,8 +204,7 @@ public interface ResourceManager extends Remote {
      */
     public boolean deleteCustomer(int xid, String custName) 
 	throws RemoteException,
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
 
 
     //////////
@@ -234,44 +223,37 @@ public interface ResourceManager extends Remote {
      */
     public int queryFlight(int xid, String flightNum) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
 
     /** Return the price of a seat on this flight. */
     public int queryFlightPrice(int xid, String flightNum) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
 
     /** Return the number of rooms available at a location. */
     public int queryRooms(int xid, String location)
 	throws RemoteException,
-	       TransactionAbortedException,
-	       InvalidTransactionException;
+	       TransactionAbortedException;
 
     /** Return the price of rooms at this location. */
     public int queryRoomsPrice(int xid, String location) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
 
     /** Return the number of cars available at a location. */
     public int queryCars(int xid, String location) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
 
     /** Return the price of rental cars at this location. */
     public int queryCarsPrice(int xid, String location) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
 
     /* Return the total price of all reservations held for a customer. */
 	public ArrayList<Reservation> queryCustomerReservations(int xid, String custName)
 	    throws RemoteException,
-		   TransactionAbortedException,
-		   InvalidTransactionException;
+		   TransactionAbortedException;
 
     //////////
     // RESERVATION INTERFACE
@@ -290,21 +272,21 @@ public interface ResourceManager extends Remote {
      */
     public boolean reserveFlight(int xid, String custName, String flightNum) 
 	throws RemoteException,
-	       TransactionAbortedException,
-	       InvalidTransactionException;
+	       TransactionAbortedException;
 
     /** Reserve a car for this customer at the specified location. */
     public boolean reserveCar(int xid, String custName, String location) 
 	throws RemoteException, 
-	       TransactionAbortedException,
-	       InvalidTransactionException; 
+	       TransactionAbortedException; 
 
     /** Reserve a room for this customer at the specified location. */
     public boolean reserveRoom(int xid, String custName, String location) 
 	throws RemoteException,
-	       TransactionAbortedException,
-	       InvalidTransactionException;
+	       TransactionAbortedException;
     
+    public boolean rollback(int xid, int times) 
+    		throws RemoteException,
+ 	       TransactionAbortedException;
 
 }
 class Reservation implements Serializable{

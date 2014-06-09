@@ -80,14 +80,15 @@ public class WorkflowControllerImpl
 	       InvalidTransactionException {
     	System.out.println("Committing");
     	if(!tm.commit(xid))
-    		return false;
+    		throw new InvalidTransactionException(xid, "can't Commit"+xid);
     	return true;
     }
 
     public void abort(int xid)
 	throws RemoteException, 
                InvalidTransactionException {
-    	tm.abort(xid);
+    	if(!tm.abort(xid))
+    		throw new InvalidTransactionException(xid, "can't Abort"+xid);
     	return;
     }
 
@@ -309,22 +310,38 @@ public class WorkflowControllerImpl
     return false;
 	//roomscounter--;
     }
-
+ 
     public boolean reserveItinerary(int xid, String custName, List flightNumList, String location, boolean needCar, boolean needRoom)
         throws RemoteException,
 	TransactionAbortedException,
 	InvalidTransactionException {
+    	int count_rev = 0;
+    	int count_flight = 0;
     	for(Object flightNum:flightNumList){
-    		if(!reserveFlight(xid,custName,(String)flightNum))
+    		if(!reserveFlight(xid,custName,(String)flightNum)){
+    			rmFlights.rollback(xid, count_flight);
+    			rmCustomers.rollback(xid, count_rev);
     			return false;
+    		}
+    		count_rev ++;
+    		count_flight++;
     	}
     	if(needCar){
-    		if(!reserveCar(xid,custName,location))
+    		if(!reserveCar(xid,custName,location)){
+    			rmFlights.rollback(xid, count_flight);
+    			rmCustomers.rollback(xid, count_rev);
     			return false;
+    		}
+    		count_rev ++;
     	}
     	if(needRoom){
-    		if(!reserveRoom(xid,custName,location))
+    		if(!reserveRoom(xid,custName,location)){
+    			rmFlights.rollback(xid, count_rev);
+    			rmCustomers.rollback(xid, count_rev);
+    			if(count_rev>count_flight)
+    				rmCars.rollback(xid, count_rev-count_flight);
     			return false;
+    		}	
     	}
 	return true;
     }

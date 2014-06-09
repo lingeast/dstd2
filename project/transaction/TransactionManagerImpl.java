@@ -90,9 +90,6 @@ public class TransactionManagerImpl
 			} catch (TransactionAbortedException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
-			} catch (InvalidTransactionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
 			}
 				
 		}
@@ -120,11 +117,7 @@ public class TransactionManagerImpl
 			} catch (RemoteException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
-			} catch (InvalidTransactionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
 			}
-				
 		}
 		TransTrace.remove(curtable);
 		// TODO Auto-generated method stub
