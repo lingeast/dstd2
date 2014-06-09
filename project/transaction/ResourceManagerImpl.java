@@ -56,6 +56,8 @@ public class ResourceManagerImpl
     // custName as primary key, combined with customer table
     HashMap <String, ArrayList<Reservation>> reservations = null;//new HashMap <String, ArrayList<Reservation>>();
     
+    // committed transactions
+    HashSet <Integer> cmtTransactions = null;
     
     public static void main(String args[]) {
     	System.setSecurityManager(new RMISecurityManager());
@@ -116,6 +118,7 @@ public class ResourceManagerImpl
     	}
     	
     	RML = new RMLogManager(tableName);
+    	this.cmtTransactions = new HashSet <Integer> ();
     	
     	this.recover();
     	System.out.println("After Recovery");
@@ -357,8 +360,9 @@ public class ResourceManagerImpl
 		}
 		for(int ids : actTrans){
 			RML.newLog(RMLog.ABORT, ids, tableName, null, null, null);
-			
 		}
+
+		this.cmtTransactions = cmtTrans;
 
 		if (ois != null) {
 			ois.close();
@@ -434,6 +438,7 @@ public class ResourceManagerImpl
     throws RemoteException,
     TransactionAbortedException {
     	System.out.println("Preparing");
+    	//what happens if committed?
     	RML.newLog(RMLog.PREPARE, xid, tableName, null, null, null);
     	// RM does not release any locks before committing
     	// 
@@ -443,8 +448,13 @@ public class ResourceManagerImpl
     public boolean commit(int xid)
 	throws RemoteException,TransactionAbortedException {
     	System.out.println("Committing");
+    	if(cmtTransactions.contains(xid)) { //already committed 
+    		return true;
+    		}else if(!RML.ActTransMap().containsKey(xid)){  //not prepare...or exist
+    			throw new TransactionAbortedException(xid,"not exist");
+    		}
     	RML.newLog(RMLog.COMMIT, xid, tableName, null, null, null);
-
+    	cmtTransactions.add(xid);
     	lm.unlockAll(xid);
     	
     	return true;
@@ -453,6 +463,9 @@ public class ResourceManagerImpl
     public void abort(int xid)  //2 cases when call abort: 1. normal 2. after recover 
 	throws RemoteException {
     	// locks acquired during DO operations are enough
+    	if(cmtTransactions.contains(xid)) { //already committed, can't abort
+    		return;
+    	}
     	ArrayList<RMLog> logs = RML.logQueueInMem();
     	for (int i = logs.size()-1; i >= 0; i--) {
     		RMLog log = logs.get(i);
@@ -479,9 +492,9 @@ public class ResourceManagerImpl
     // ADMINISTRATIVE INTERFACE
     public boolean addFlight(int xid, String flightNum, int numSeats, int price) 
 	throws RemoteException, 
-	       TransactionAbortedException {
-    	
+	       TransactionAbortedException, InvalidTransactionException {
           //no XID check any more
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -509,9 +522,10 @@ public class ResourceManagerImpl
     }
 
     public boolean deleteFlight(int xid, String flightNum)
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
           //no XID check any more
+    	tm.enlist(xid, myRMIName);
         try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -531,9 +545,10 @@ public class ResourceManagerImpl
     } 
 		
     public boolean addRooms(int xid, String location, int numRooms, int price) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	 //no XID check any more
+    	tm.enlist(xid, myRMIName);
         try {
 			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -561,9 +576,10 @@ public class ResourceManagerImpl
     }
 
     public boolean deleteRooms(int xid, String location, int numRooms) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	 //no XID check any more
+    	tm.enlist(xid, myRMIName);
         try {
 			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -572,6 +588,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}
+
         if(hotels==null) return false;
         Hotel curHotel = hotels.get(location); 
         Hotel oldHotel = null;
@@ -590,10 +607,11 @@ public class ResourceManagerImpl
     }
 
     public boolean addCars(int xid, String location, int numCars, int price) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	
     	 //no XID check any more
+    	tm.enlist(xid, myRMIName);
         try {
 			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -602,6 +620,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}
+
         if(cars==null) return false;
         Car curCar = cars.get(location);
         Car oldCar = null;
@@ -621,10 +640,11 @@ public class ResourceManagerImpl
     }
 
     public boolean deleteCars(int xid, String location, int numCars) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	
     	 //no XID check any more
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -633,6 +653,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}
+
         if(cars==null) return false;
         Car curCar = cars.get(location);
         Car oldCar = null;
@@ -652,9 +673,10 @@ public class ResourceManagerImpl
     }
 
     public boolean newCustomer(int xid, String custName) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	 //no XID check any more
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+custName, LockManager.WRITE);
 			lm.lock(xid, "reservations"+custName, LockManager.WRITE);
@@ -664,6 +686,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}
+
         if(customers==null) return false;
         Customer curCustomer = customers.get(custName);
         ArrayList<Reservation> curList = null;
@@ -679,11 +702,12 @@ public class ResourceManagerImpl
     }
 
     public boolean deleteCustomer(int xid, String custName) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	
     	// get transaction
     	 //no XID check any more
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+custName, LockManager.WRITE);
 	    	lm.lock(xid, String.valueOf("reservations")+custName, LockManager.WRITE);
@@ -737,8 +761,9 @@ public class ResourceManagerImpl
 
     // QUERY INTERFACE
     public int queryFlight(int xid, String flightNum)
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -747,6 +772,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}    
+
     	if(flights==null) return -1;
     	Flight curFlight = flights.get(flightNum);
         
@@ -757,8 +783,9 @@ public class ResourceManagerImpl
     }	
 
     public int queryFlightPrice(int xid, String flightNum)
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -767,6 +794,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}    
+
     	if(flights==null) return -1;
     	Flight curFlight = flights.get(flightNum);
         
@@ -777,8 +805,9 @@ public class ResourceManagerImpl
     }
 
     public int queryRooms(int xid, String location)
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -787,6 +816,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}    
+
     	if(hotels==null) return -1;
     	Hotel curHotel = hotels.get(location);
         
@@ -797,8 +827,9 @@ public class ResourceManagerImpl
     }
 
     public int queryRoomsPrice(int xid, String location)
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -807,6 +838,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}    
+
     	if(hotels==null) return -1;
     	Hotel curHotel = hotels.get(location);
         
@@ -817,8 +849,9 @@ public class ResourceManagerImpl
     }
 
     public int queryCars(int xid, String location)
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -827,6 +860,7 @@ public class ResourceManagerImpl
 			tm.abort(xid);
 			throw new TransactionAbortedException(xid,"deadlock!");
 		}    
+    	
     	if(cars==null) return -1;
     	Car curCar = cars.get(location);
         
@@ -837,8 +871,9 @@ public class ResourceManagerImpl
     }
 
     public int queryCarsPrice(int xid, String location)
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -858,8 +893,9 @@ public class ResourceManagerImpl
     }
 
     public ArrayList<Reservation> queryCustomerReservations(int xid, String custName)
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
    		try {
 			lm.lock(xid, "reservations"+custName, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -873,8 +909,9 @@ public class ResourceManagerImpl
 
     // Reservation INTERFACE
     public boolean reserveFlight(int xid, String custName, String flightNum) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
     	if(myRMIName.equals(RMINameFlights)){//for RM interface
     		try {
     			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
@@ -928,8 +965,9 @@ public class ResourceManagerImpl
     }
  
     public boolean reserveCar(int xid, String custName, String location) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
+    	tm.enlist(xid, myRMIName);
     	if(myRMIName.equals(RMINameCars)){//for RM interface
     		try {
     			lm.lock(xid, myRMIName+location, LockManager.WRITE);
@@ -981,9 +1019,9 @@ public class ResourceManagerImpl
     }
 
     public boolean reserveRoom(int xid, String custName, String location) 
-	throws RemoteException, 
+	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	
+    	tm.enlist(xid, myRMIName);
     	if(myRMIName.equals(RMINameRooms)){//for RM interface
     		try {
     			lm.lock(xid, myRMIName+location, LockManager.WRITE);
@@ -1069,6 +1107,43 @@ public class ResourceManagerImpl
     	}
 		return true;
 	}
+
+
+	public void tryconnect() throws RemoteException{
+		// TODO Auto-generated method stub
+		//do nothing
+	}
+	String victim0 = "";
+	boolean dieRMAfterEnlist = false;
+	boolean dieRMBeforePrepare = false;
+	boolean dieRMAfterPrepare = false;
+	boolean dieRMBeforeCommit = false;
+	boolean dieRMBeforeAbort = false;
+    public boolean dieRMAfterEnlist()
+	throws RemoteException {
+    	dieRMAfterEnlist = true;
+	return true;
+    }
+    public boolean dieRMBeforePrepare()
+	throws RemoteException {
+    	dieRMBeforePrepare = true;
+	return true;
+    }
+    public boolean dieRMAfterPrepare()
+	throws RemoteException {
+    	dieRMAfterPrepare = true;
+	return true;
+    }
+    public boolean dieRMBeforeCommit()
+	throws RemoteException {
+    	dieRMBeforeCommit = true;
+	return true;
+    }
+    public boolean dieRMBeforeAbort()
+	throws RemoteException {
+    	dieRMBeforeAbort = true;
+	return true;
+    }
 
 
 }
@@ -1234,6 +1309,7 @@ class RMLog implements Serializable {
 
 
 	 private int LSN;	// Latest Log Sequence Number
+	 private int LastSaveLSN;	// Latest flushed LSN
 	 private LinkedList<RMLog> logQueue = null; // the log sequence in the memory
 	 private ArrayList <RMLog> logSeq = null;
 	 
@@ -1243,6 +1319,7 @@ class RMLog implements Serializable {
 		 RMName = tableName;
 		 logName = dirName + RMName + logSuffix;
 		 logSeq = this.LogSequenceInFile();
+		 LastSaveLSN = 0;
 		 if (logSeq.isEmpty()) {
 			 LSN = -1;
 		 } else {
@@ -1251,6 +1328,8 @@ class RMLog implements Serializable {
 		 
 		 logQueue = new LinkedList<RMLog>();
 		 TransLast = new HashMap<Integer,Integer>();
+		 
+		 this.setOutputStream();//after starting, should open output
 	 }
 
 	 /*
@@ -1259,6 +1338,7 @@ class RMLog implements Serializable {
 	  */
 
 	 private void setOutputStream() throws IOException, FileNotFoundException {
+		 
 		 try {
 			 fos = new FileOutputStream(logName, true);
 		 } catch (FileNotFoundException fe) {
@@ -1311,7 +1391,9 @@ class RMLog implements Serializable {
 		 }
 
 		 chainLSN = logQueue.get(chainLSN).preLSN;  //UndoNxtLSN = preLSN of the undoing LSN
-		 logQueue.addLast(new RMLog(LSN, chainLSN, type, xid, table, key, before, after));
+		 logQueue.addLast(new RMLog(++LSN, chainLSN, type, xid, table, key, before, after));
+		 TransLast.put(xid,LSN);  //may be used
+		 return;
 	 }
 	 
 	 public void newLog(int type, int xid, String table, String key, Object before, Object after) throws RemoteException {
@@ -1321,16 +1403,14 @@ class RMLog implements Serializable {
 		 
 		 int lastLSN = -1;
 		 // if DO operation log, then find its prevLSN
-		// if (type == RMLog.PUT || type == RMLog.REMOVE) {
-			 if(TransLast.containsKey(xid)) {
-				 lastLSN = TransLast.get(xid);
-			 }
-			 TransLast.put(xid,++LSN);
-		// } 
+		 if(TransLast.containsKey(xid)) {
+			 lastLSN = TransLast.get(xid);
+		 }
+		 TransLast.put(xid,++LSN); 
 		 
 		 logQueue.addLast(new RMLog(LSN, lastLSN, type, xid, table, key, before, after));
 		 
-		 if (type == RMLog.ABORT || type == RMLog.COMMIT) {
+		 if (type == RMLog.ABORT || type == RMLog.COMMIT || type == RMLog.PREPARE) { //
 			 try {
 				flushLog(LSN);
 			} catch (IOException e) {
@@ -1338,7 +1418,7 @@ class RMLog implements Serializable {
 				e.printStackTrace();
 				throw new RemoteException();
 			}
-			 this.TransLast.remove(xid);
+			 if( type != RMLog.PREPARE)this.TransLast.remove(xid);  //should remove when commit or abort
 		 }
 	 }
 	 
@@ -1350,19 +1430,21 @@ class RMLog implements Serializable {
 
 
 	 public void flushLog(int LSN) throws IOException {
-		 this.closeInputStream();
-		 this.setOutputStream();
+		 
 		 /*
 		 while(!logQueue.isEmpty() && logQueue.peekFirst().LSN <= LSN) {
 			 oos.writeObject(logQueue.removeFirst());
 		 }
 		 */
-		 for (RMLog log : logQueue) {
-			 oos.writeObject(log);
+		 System.out.println("flushing from "+LastSaveLSN+" to "+LSN);
+		 for (int i = LastSaveLSN; i < LSN+1; i++) {
+			 oos.writeObject(logQueue.get(i));
 		 }
+		 LastSaveLSN = LSN;
 		 oos.flush();
-		 fos.flush();
-		 this.closeOutputStream();
+		 
+		 //oos.close();
+		 //this.closeOutputStream();
 		 
 	 }
 	 
@@ -1399,6 +1481,7 @@ class RMLog implements Serializable {
 		 }
 		 ///not sure
 		 this.closeInputStream();
+		 
 		 return logList;
 	 }
 

@@ -70,29 +70,58 @@ public class TransactionManagerImpl
 	
 	@Override
 	public boolean commit(int xid) 
-			throws RemoteException{
+			throws RemoteException, TransactionAbortedException{
 		// TODO Auto-generated method stub
+		System.out.println("committing "+xid);
+		tryconnect();
 		HashSet<String> curtable = TransTrace.get(xid);
 		if(curtable==null) return false;
+		boolean vote = true;
+		
+		//send prepare and see what happen
 		for(String RMIName: curtable){
-			try {
+				System.out.println("send prepare to "+RMIName);
 				if(RMIName.equals(RMINameFlights))
-					rmFlights.commit(xid);
+					{if(!rmFlights.prepare(xid))
+						vote = false;}
 				if(RMIName.equals(RMINameCars))
-					rmCars.commit(xid);
+					{if(!rmCars.prepare(xid))
+						vote = false;}
 				if(RMIName.equals(RMINameRooms))
-					rmRooms.commit(xid);
+					{if(!rmRooms.prepare(xid))
+						vote = false;}
 				if(RMIName.equals(RMINameCustomers))
-					rmCustomers.commit(xid);
-			} catch (RemoteException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (TransactionAbortedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-				
+					{if(!rmCustomers.prepare(xid))
+						vote = false;}
 		}
+
+		//send commit or abort  //here should be logged
+		if(vote){
+			System.out.println(xid+"everyone votes yes");
+			for(String RMIName: curtable){
+				try {
+					if(RMIName.equals(RMINameFlights))
+						rmFlights.commit(xid);
+					if(RMIName.equals(RMINameCars))
+						rmCars.commit(xid);
+					if(RMIName.equals(RMINameRooms))
+						rmRooms.commit(xid);
+					if(RMIName.equals(RMINameCustomers))
+						rmCustomers.commit(xid);
+				} catch (RemoteException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (TransactionAbortedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}	
+			}
+		}else 	{
+			System.out.println(xid+"someone vote no");
+			this.abort(xid);
+			throw new TransactionAbortedException(xid,"can't commit");
+		}
+			
 		TransTrace.remove(curtable);
 		return true;
 	}
@@ -101,11 +130,12 @@ public class TransactionManagerImpl
 	@Override
 	public boolean abort(int xid) 
 			throws RemoteException{
+		System.out.println("aborting "+xid);
+		tryconnect();
 		HashSet<String> curtable = TransTrace.get(xid);
 		if(curtable==null) return false;
 		for(String RMIName: curtable){
-		
-			try {
+
 				if(RMIName.equals(RMINameFlights))
 					rmFlights.abort(xid);
 				else if(RMIName.equals(RMINameCars))
@@ -114,10 +144,7 @@ public class TransactionManagerImpl
 					rmRooms.abort(xid);
 				else if(RMIName.equals(RMINameCustomers))
 					rmCustomers.abort(xid);
-			} catch (RemoteException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+	
 		}
 		TransTrace.remove(curtable);
 		// TODO Auto-generated method stub
@@ -157,6 +184,18 @@ public class TransactionManagerImpl
 		}
 		return true;
 	}
+	
+	protected void tryconnect() throws RemoteException{
+		try{
+			rmFlights.tryconnect();
+			rmCars.tryconnect();
+			rmRooms.tryconnect();
+			rmCustomers.tryconnect();
+		}catch(RemoteException re){
+			System.err.println("Some RM is lost");
+			connect();
+		}
+	}
 	@Override
 	public boolean enlist(int xid, String RMIName) 
 			throws RemoteException,InvalidTransactionException{
@@ -169,9 +208,26 @@ public class TransactionManagerImpl
 		}
 			
 		curtable.add(RMIName);
-		
 		return true;
 	}
+
+	boolean dieTMBeforeCommit = false;
+	boolean dieTMAfterCommit = false;
+
+	
+    public boolean dieTMBeforeCommit()
+	throws RemoteException {
+    	dieTMBeforeCommit = true;
+	return true;
+    }
+    public boolean dieTMAfterCommit()
+	throws RemoteException {
+    	dieTMAfterCommit = true;
+	return true;
+    }
+
+
+
 
 
 

@@ -25,7 +25,7 @@ public interface TransactionManager extends Remote {
     public boolean start(int  xid)
     		throws RemoteException;
     public boolean commit(int  xid)
-    		throws RemoteException;
+    		throws RemoteException, TransactionAbortedException;
     public boolean abort(int  xid)
     		throws RemoteException;
     public boolean enlist(int  xid, String  RMIName)
@@ -33,4 +33,14 @@ public interface TransactionManager extends Remote {
     
     /** The RMI name a TransactionManager binds to. */
     public static final String RMIName = "TM";
+
+    public boolean dieTMBeforeCommit()
+	throws RemoteException;
+
+    public boolean dieTMAfterCommit()
+	throws RemoteException;
+
+
+
+	
 }
