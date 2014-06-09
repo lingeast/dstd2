@@ -1440,7 +1440,7 @@ class RMLog implements Serializable {
 		 for (int i = LastSaveLSN; i < LSN+1; i++) {
 			 oos.writeObject(logQueue.get(i));
 		 }
-		 LastSaveLSN = LSN;
+		 LastSaveLSN = LSN+1;
 		 oos.flush();
 		 
 		 //oos.close();
