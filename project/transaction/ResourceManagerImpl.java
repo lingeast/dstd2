@@ -247,6 +247,7 @@ public class ResourceManagerImpl
 	    	if(myRMIName.equals(RMINameCustomers)){
 	    		customers = (HashMap <String, Customer>)ois.readObject();
 	    		try{
+	    			ois.close();
 	    			ois = new ObjectInputStream(new FileInputStream(this.dirName+ "reservations"));
 	    			if(ois!=null)
 	    				reservations = (HashMap <String, ArrayList<Reservation>>)ois.readObject();
@@ -261,19 +262,25 @@ public class ResourceManagerImpl
 		    		newfile.createNewFile();
 	    		}
 	    	}
-	    	if (ois != null) ois.close();
+	    	if (ois != null) 
+	    		ois.close();
 			// TODO: read LSN out
 		} else {
 			// no database on disk
 			pageLSN = -1;
 		}
-		System.out.println("Recover from disk FINISHED\n");
+		System.out.println("Recover from disk FINISHED");
 		
 		List<RMLog> logs = RML.LogSequenceAfter(pageLSN);
+		
+		if(logs.size()>0){
+		
 		HashSet<Integer> actTrans = new HashSet<Integer>();
 		HashSet<Integer> cmtTrans = new HashSet<Integer>();
 		HashSet<Integer> abtTrans = new HashSet<Integer>();
 		HashSet<Integer> preTrans = new HashSet<Integer>();
+		
+		
 		System.out.println("Reconstruct Transaction Table with log_size:" +logs.size() );
 		for (RMLog log : logs) {
 			actTrans.add(log.xid);
@@ -370,6 +377,7 @@ public class ResourceManagerImpl
 		//if preparing..should handle it.
 		if(preparing)
 			;//tm.checkpre(preparingXID);
+		}
 		
 	}
 
@@ -438,7 +446,11 @@ public class ResourceManagerImpl
     throws RemoteException,
     TransactionAbortedException {
     	System.out.println("Preparing");
-    	//what happens if committed?
+    	// what happens if committed or aborted??
+    	// if the transaction make updates before, it will exist in log manager's actTrans or commited/aborted.
+    	if(!RML.ActTransMap().containsKey(xid)){  //not prepare...or exist
+			throw new TransactionAbortedException(xid,"not exist");
+		}
     	RML.newLog(RMLog.PREPARE, xid, tableName, null, null, null);
     	// RM does not release any locks before committing
     	// 
@@ -763,7 +775,7 @@ public class ResourceManagerImpl
     public int queryFlight(int xid, String flightNum)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	//tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -785,7 +797,7 @@ public class ResourceManagerImpl
     public int queryFlightPrice(int xid, String flightNum)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	//tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -807,7 +819,7 @@ public class ResourceManagerImpl
     public int queryRooms(int xid, String location)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	//tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -829,7 +841,7 @@ public class ResourceManagerImpl
     public int queryRoomsPrice(int xid, String location)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	//tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -851,7 +863,7 @@ public class ResourceManagerImpl
     public int queryCars(int xid, String location)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	//tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -873,7 +885,7 @@ public class ResourceManagerImpl
     public int queryCarsPrice(int xid, String location)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	//tm.enlist(xid, myRMIName);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -895,7 +907,7 @@ public class ResourceManagerImpl
     public ArrayList<Reservation> queryCustomerReservations(int xid, String custName)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	//tm.enlist(xid, myRMIName);
    		try {
 			lm.lock(xid, "reservations"+custName, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -1076,12 +1088,14 @@ public class ResourceManagerImpl
     // TECHNICAL/TESTING INTERFACE
     public boolean shutdown()
 	throws RemoteException {
+    	if(RML!=null) RML.close();
     	System.exit(0);
     	return true;
     }
 
     public boolean dieNow() 
 	throws RemoteException {
+    	if(RML!=null) RML.close();
     	System.exit(1);
     	return true; // We won't ever get here since we exited above;
 	             // but we still need it to please the compiler.
@@ -1319,6 +1333,7 @@ class RMLog implements Serializable {
 		 RMName = tableName;
 		 logName = dirName + RMName + logSuffix;
 		 logSeq = this.LogSequenceInFile();
+		 
 		 LastSaveLSN = 0;
 		 if (logSeq.isEmpty()) {
 			 LSN = -1;
@@ -1329,10 +1344,21 @@ class RMLog implements Serializable {
 		 logQueue = new LinkedList<RMLog>();
 		 TransLast = new HashMap<Integer,Integer>();
 		 
-		 this.setOutputStream();//after starting, should open output
 	 }
 
-	 /*
+	 public void close() {
+		// TODO Auto-generated method stub
+		try {
+			this.closeInputStream();
+			this.closeOutputStream();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			//do nothing
+		}
+		
+	}
+
+	/*
 	  * Set output stream to log file
 	  * Try to create new file if not exists
 	  */
@@ -1361,6 +1387,8 @@ class RMLog implements Serializable {
 			 oos.close();
 		 if (fos != null)
 			 fos.close(); // redundant
+		 oos = null;
+		 fos = null;
 	 }
 
 	 /*
@@ -1382,6 +1410,8 @@ class RMLog implements Serializable {
 			 ois.close();
 		 if (fis != null)
 			 fis.close(); // redundant
+		 ois = null;
+		 fis = null;
 	 }
 
 	 
@@ -1418,7 +1448,7 @@ class RMLog implements Serializable {
 				e.printStackTrace();
 				throw new RemoteException();
 			}
-			 if( type != RMLog.PREPARE)this.TransLast.remove(xid);  //should remove when commit or abort
+			if( type != RMLog.PREPARE)this.TransLast.remove(xid);  //should remove when commit or abort
 		 }
 	 }
 	 
@@ -1436,15 +1466,18 @@ class RMLog implements Serializable {
 			 oos.writeObject(logQueue.removeFirst());
 		 }
 		 */
+		 if(oos == null||ois !=null){
+			 this.closeInputStream();
+			 this.setOutputStream();//after starting, should open output
+		 }
+		 if(LSN>logQueue.size()) return;
 		 System.out.println("flushing from "+LastSaveLSN+" to "+LSN);
 		 for (int i = LastSaveLSN; i < LSN+1; i++) {
 			 oos.writeObject(logQueue.get(i));
 		 }
 		 LastSaveLSN = LSN+1;
 		 oos.flush();
-		 
-		 //oos.close();
-		 //this.closeOutputStream();
+		 fos.flush();
 		 
 	 }
 	 
@@ -1455,15 +1488,20 @@ class RMLog implements Serializable {
 	 public  HashMap<Integer,Integer> ActTransMap(){
 		 return new HashMap<Integer,Integer> (TransLast);
 	 }
-	 /*
+
+	/*
 	  * return log sequence on disk in ArrayList
 	  *   Empty ArrayList if no logs on disk
 	  */
 	 private ArrayList<RMLog> LogSequenceInFile() throws IOException, ClassNotFoundException {
+		 
 		 this.closeOutputStream();
+		 
 		 try {
 			 this.setInputStream();
 		 } catch (FileNotFoundException fne) {
+			 return new ArrayList<RMLog>();
+		 } catch(IOException ie){  //last time may not close os
 			 return new ArrayList<RMLog>();
 		 }
 
@@ -1472,7 +1510,7 @@ class RMLog implements Serializable {
 			 RMLog rmlog = null;
 			 try {
 				rmlog = (RMLog)ois.readObject();
-				System.out.println("read a log"+rmlog.table+rmlog.key);
+				//System.out.println("read a log"+rmlog.table+rmlog.key);
 			 } catch (EOFException eofe) {
 				 // End of File
 				 break;
@@ -1480,8 +1518,7 @@ class RMLog implements Serializable {
 				 logList.add(rmlog);
 		 }
 		 ///not sure
-		 this.closeInputStream();
-		 
+		 //this.closeInputStream();
 		 return logList;
 	 }
 
