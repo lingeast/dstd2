@@ -120,12 +120,11 @@ public class ResourceManagerImpl
     	RML = new RMLogManager(tableName);
     	this.cmtTransactions = new HashSet <Integer> ();
     	
-    	this.recover();
-    	System.out.println("After Recovery");
-
     	while (!reconnect()) {
     	    // would be better to sleep a while
     	} 
+    	this.recover();
+    	System.out.println(myRMIName+"Created or Recovered successfully");
     }
 	
 	// Undo Operation on table
@@ -271,17 +270,13 @@ public class ResourceManagerImpl
 		}
 		System.out.println("Recover from disk FINISHED");
 		
-		List<RMLog> logs = RML.LogSequenceAfter(pageLSN);
-		
+		List<RMLog> logs =  RML.LogSequenceAfter(pageLSN); //keep unchanged during recovering
 		if(logs.size()>0){
-		
-		HashSet<Integer> actTrans = new HashSet<Integer>();
-		HashSet<Integer> cmtTrans = new HashSet<Integer>();
-		HashSet<Integer> abtTrans = new HashSet<Integer>();
-		HashSet<Integer> preTrans = new HashSet<Integer>();
-		
-		
-		System.out.println("Reconstruct Transaction Table with log_size:" +logs.size() );
+			HashSet<Integer> actTrans = new HashSet<Integer>();
+			HashSet<Integer> cmtTrans = new HashSet<Integer>();
+			HashSet<Integer> abtTrans = new HashSet<Integer>();
+			HashSet<Integer> preTrans = new HashSet<Integer>();
+			System.out.println("Reconstruct Transaction Table with log_size:" +logs.size() );
 		for (RMLog log : logs) {
 			actTrans.add(log.xid);
 			if (log.type == RMLog.COMMIT) {
@@ -311,14 +306,17 @@ public class ResourceManagerImpl
 		System.out.println("Redo Phase");
 		boolean preparing = false;
 		int preparingXID = -1;
-		if(!preTrans.isEmpty()){
+		if(!preTrans.isEmpty()){ //get preparing xid
 			preparing = true;
 			if(preTrans.size() == 1) {
 				preparingXID = preTrans.toArray(new Integer[1])[0];
 			}else  
 				System.err.println("impossible for more than one preparing transactions");
 		}
-		
+		if(tm.check_status(preparingXID)==2){ //ready to aborted
+			preparing = false;
+			actTrans.add(preparingXID);
+		}
 		for (RMLog log : logs) {
 			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE ) {
 				// redo in memory database
@@ -329,6 +327,7 @@ public class ResourceManagerImpl
 					if(preparing&&log.xid==preparingXID) //prepare phase need reacquire lock
 						try {
 							lm.lock(log.xid, myRMIName+log.key, LockManager.WRITE);
+							RML.ActTransMap().put(log.xid, log.LSN);//get back to active transaction's list
 						} catch (DeadlockException e) {
 							e.printStackTrace();
 							tm.abort(log.xid);
@@ -340,18 +339,17 @@ public class ResourceManagerImpl
 		}
 		
 		// Undo phase
-
-		
 		//undo here can use preLSN
-		
 		System.out.println("Undo Phase");
 		for (int i = logs.size() - 1; i >= 0; i--) {
+			System.out.println("pulling:LSN="+i);
 			RMLog log = logs.get(i);
 			if (actTrans.contains(log.xid)) {
+				System.out.println("Undoing:"+log.table+":"+log.key);
 				if (log.type == RMLog.PUT || log.type == RMLog.REMOVE) {
 					// write CLR log
 					// CLR = redo-only log, beforeVal and after Val are exact inverse
-					undoOnTable(log);
+					this.undoOnTable(log);
 					/* If remove, should create a copy to log abort and recall tm.abort
 					 * here we assume there are checkpoint so less needy to trace empty undo-list
 					 * if(log.preLSN == -1)
@@ -393,12 +391,14 @@ public class ResourceManagerImpl
     	try {
     	    tm = (TransactionManager)Naming.lookup(rmiPort + TransactionManager.RMIName);
     	    System.out.println(myRMIName + " bound to TM");
+    	    
     	} 
     	catch (Exception e) {
-    	    System.err.println(myRMIName + " cannot bind to TM:" + e);
+    	    System.err.println(myRMIName + " cannot bind with TM:" + e);
     	    return false;
     	}
 
+    	
     	return true;
 	}
 
@@ -442,28 +442,39 @@ public class ResourceManagerImpl
     	}
     }
     
-    public boolean prepare(int xid) 	
+    public boolean prepare(int xid, boolean readonly) 	
     throws RemoteException,
     TransactionAbortedException {
-    	System.out.println("Preparing");
-    	// what happens if committed or aborted??
+    	if(dieRMBeforePrepare)
+    		this.dieNow();
+    	System.out.println("Preparing"+readonly);
     	// if the transaction make updates before, it will exist in log manager's actTrans or commited/aborted.
     	if(!RML.ActTransMap().containsKey(xid)){  //not prepare...or exist
     		throw new TransactionAbortedException(xid,"not exist");
 		}
+    	// Normally RM does not release any locks before committing
     	RML.newLog(RMLog.PREPARE, xid, tableName, null, null, null);
-    	// RM does not release any locks before committing
-    	// 
+    	//shortcut for readonly prepare
+    	if(readonly){
+        	RML.newLog(RMLog.COMMIT, xid, tableName, null, null, null);
+        	cmtTransactions.add(xid);
+        	lm.unlockAll(xid);
+    	}
+    	if(dieRMAfterPrepare)
+    		this.dieNow();
     	return true;
     }
     
     public boolean commit(int xid)
 	throws RemoteException,TransactionAbortedException {
+    	if(dieRMBeforeCommit)
+    		this.dieNow();
     	System.out.println("Committing");
     	if(cmtTransactions.contains(xid)) { //already committed 
     		return true;
-    		}else if(!RML.ActTransMap().containsKey(xid)){  //not prepare...or exist
-    			throw new TransactionAbortedException(xid,"not exist");
+    		}else if(!RML.ActTransMap().containsKey(xid)){  
+//not happen in 2PC, if xid is not committed or prepare, it's already aborted.(TM will not reach the phase to call this)
+    			throw new TransactionAbortedException(xid," not exist in database:"+myRMIName);
     		}
     	RML.newLog(RMLog.COMMIT, xid, tableName, null, null, null);
     	cmtTransactions.add(xid);
@@ -475,6 +486,9 @@ public class ResourceManagerImpl
     public void abort(int xid)  //2 cases when call abort: 1. normal 2. after recover 
 	throws RemoteException {
     	// locks acquired during DO operations are enough
+    	if(dieRMBeforeAbort)
+    		this.dieNow();
+    	System.out.println("Aborting");
     	if(cmtTransactions.contains(xid)||!RML.ActTransMap().containsKey(xid)) { //already committed, can't abort
     		return;
     	}
@@ -506,7 +520,7 @@ public class ResourceManagerImpl
 	throws RemoteException, 
 	       TransactionAbortedException, InvalidTransactionException {
           //no XID check any more
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
     	try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -537,7 +551,7 @@ public class ResourceManagerImpl
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
           //no XID check any more
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
         try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -560,7 +574,7 @@ public class ResourceManagerImpl
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	 //no XID check any more
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
         try {
 			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -591,7 +605,7 @@ public class ResourceManagerImpl
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	 //no XID check any more
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
         try {
 			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -620,10 +634,9 @@ public class ResourceManagerImpl
 
     public boolean addCars(int xid, String location, int numCars, int price) 
 	throws RemoteException, InvalidTransactionException,
-	       TransactionAbortedException {
-    	
+	       TransactionAbortedException {   	
     	 //no XID check any more
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
         try {
 			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -656,7 +669,7 @@ public class ResourceManagerImpl
 	       TransactionAbortedException {
     	
     	 //no XID check any more
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.WRITE);
 		} catch (DeadlockException e) {
@@ -688,7 +701,7 @@ public class ResourceManagerImpl
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
     	 //no XID check any more
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
     	try {
 			lm.lock(xid, myRMIName+custName, LockManager.WRITE);
 			lm.lock(xid, "reservations"+custName, LockManager.WRITE);
@@ -719,7 +732,7 @@ public class ResourceManagerImpl
     	
     	// get transaction
     	 //no XID check any more
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
     	try {
 			lm.lock(xid, myRMIName+custName, LockManager.WRITE);
 	    	lm.lock(xid, String.valueOf("reservations")+custName, LockManager.WRITE);
@@ -775,7 +788,7 @@ public class ResourceManagerImpl
     public int queryFlight(int xid, String flightNum)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	//tm.enlist(xid, myRMIName);
+    	this.enlist_readonly(xid);
     	try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -797,7 +810,7 @@ public class ResourceManagerImpl
     public int queryFlightPrice(int xid, String flightNum)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	//tm.enlist(xid, myRMIName);
+    	this.enlist_readonly(xid);
     	try {
 			lm.lock(xid, myRMIName+flightNum, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -819,7 +832,7 @@ public class ResourceManagerImpl
     public int queryRooms(int xid, String location)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	//tm.enlist(xid, myRMIName);
+    	this.enlist_readonly(xid);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -841,7 +854,7 @@ public class ResourceManagerImpl
     public int queryRoomsPrice(int xid, String location)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	//tm.enlist(xid, myRMIName);
+    	this.enlist_readonly(xid);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -863,7 +876,7 @@ public class ResourceManagerImpl
     public int queryCars(int xid, String location)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	//tm.enlist(xid, myRMIName);
+    	this.enlist_readonly(xid);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -885,7 +898,7 @@ public class ResourceManagerImpl
     public int queryCarsPrice(int xid, String location)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	//tm.enlist(xid, myRMIName);
+    	this.enlist_readonly(xid);
     	try {
 			lm.lock(xid, myRMIName+location, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -907,7 +920,7 @@ public class ResourceManagerImpl
     public ArrayList<Reservation> queryCustomerReservations(int xid, String custName)
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	//tm.enlist(xid, myRMIName);
+    	this.enlist_readonly(xid);
    		try {
 			lm.lock(xid, "reservations"+custName, LockManager.READ);
 		} catch (DeadlockException e) {
@@ -923,7 +936,7 @@ public class ResourceManagerImpl
     public boolean reserveFlight(int xid, String custName, String flightNum) 
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
     	if(myRMIName.equals(RMINameFlights)){//for RM interface
     		try {
     			lm.lock(xid, myRMIName+flightNum, LockManager.WRITE);
@@ -979,7 +992,7 @@ public class ResourceManagerImpl
     public boolean reserveCar(int xid, String custName, String location) 
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
     	if(myRMIName.equals(RMINameCars)){//for RM interface
     		try {
     			lm.lock(xid, myRMIName+location, LockManager.WRITE);
@@ -1033,7 +1046,7 @@ public class ResourceManagerImpl
     public boolean reserveRoom(int xid, String custName, String location) 
 	throws RemoteException, InvalidTransactionException,
 	       TransactionAbortedException {
-    	tm.enlist(xid, myRMIName);
+    	this.enlist(xid);
     	if(myRMIName.equals(RMINameRooms)){//for RM interface
     		try {
     			lm.lock(xid, myRMIName+location, LockManager.WRITE);
@@ -1121,8 +1134,20 @@ public class ResourceManagerImpl
     	}
 		return true;
 	}
+	
+	protected void enlist(int xid) throws RemoteException, InvalidTransactionException{
+		if(tm!=null)
+			tm.enlist(xid, myRMIName);
+		if(dieRMAfterEnlist)
+			this.dieNow();
+	}
 
-
+	protected void enlist_readonly(int xid) throws RemoteException, InvalidTransactionException{
+		if(tm!=null)
+			tm.enlist_readonly(xid, myRMIName);
+		if(dieRMAfterEnlist)
+			this.dieNow();
+	}
 	public void tryconnect() throws RemoteException{
 		// TODO Auto-generated method stub
 		//do nothing
@@ -1419,8 +1444,11 @@ class RMLog implements Serializable {
 		 if (type != RMLog.CLR) {
 			 throw new IllegalArgumentException("non-CLR Should not call this method");
 		 }
-
-		 chainLSN = logQueue.get(chainLSN).preLSN;  //UndoNxtLSN = preLSN of the undoing LSN
+		 if(logQueue.isEmpty()&&logSeq.size()>chainLSN)//after recover, the record maybe in logSeq but not logQueue
+			 chainLSN = logSeq.get(chainLSN).preLSN;  //UndoNxtLSN = preLSN of the undoing LSN
+		 else{
+			 chainLSN = logQueue.get(chainLSN-logSeq.size()).preLSN; 
+		 }
 		 logQueue.addLast(new RMLog(++LSN, chainLSN, type, xid, table, key, before, after));
 		 TransLast.put(xid,LSN);  //may be used
 		 return;

@@ -30,7 +30,11 @@ public interface TransactionManager extends Remote {
     		throws RemoteException;
     public boolean enlist(int  xid, String  RMIName)
     		throws RemoteException, InvalidTransactionException;
-    
+    public boolean enlist_readonly(int xid, String myRMIName)
+    		throws RemoteException,InvalidTransactionException;
+	public int check_status(int xid) 
+			throws RemoteException;
+			
     /** The RMI name a TransactionManager binds to. */
     public static final String RMIName = "TM";
 
@@ -39,6 +43,7 @@ public interface TransactionManager extends Remote {
 
     public boolean dieTMAfterCommit()
 	throws RemoteException;
+	
 
 
 

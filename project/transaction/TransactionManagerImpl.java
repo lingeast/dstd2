@@ -16,6 +16,7 @@ public class TransactionManagerImpl
     implements TransactionManager {
     
 	protected Hashtable<Integer, HashSet<String>> TransTrace = null;
+	protected Hashtable<Integer, HashSet<String>> TransTraceReadonly = null;
     
     protected ResourceManager rmFlights = null;
     protected ResourceManager rmRooms = null;
@@ -24,6 +25,12 @@ public class TransactionManagerImpl
     
     protected boolean flag_ref = false;
 	
+    ////roughly implement a hashtable for 2PC's coordinate database, second parameter used for state
+    protected Hashtable<Integer, Integer> TransStates = null;
+    public static final int PREPARING = 0;
+    public static final int COMMITTING = 1;
+    public static final int ABORTING = 2;
+    
     public static void main(String args[]) {
 	System.setSecurityManager(new RMISecurityManager());
 
@@ -48,6 +55,8 @@ public class TransactionManagerImpl
     
     public TransactionManagerImpl() throws RemoteException {
     	TransTrace = new Hashtable<Integer, HashSet<String>> ();
+    	TransTraceReadonly = new Hashtable<Integer, HashSet<String>> ();
+    	TransStates = new Hashtable<Integer, Integer> ();
     	flag_ref = false;
     }
 
@@ -63,8 +72,13 @@ public class TransactionManagerImpl
 	public boolean start(int xid) 
 			throws RemoteException{
 		// TODO Auto-generated method stub
-		HashSet<String> newtable = new HashSet<String>();
-		TransTrace.put(xid,newtable);
+		if(!flag_ref){  //refer to all RMs at very beginning
+			if(connect())
+				flag_ref = true;
+		}else
+			tryconnect();  //reconnect if in need
+		TransTrace.put(xid,new HashSet<String>());
+		TransTraceReadonly.put(xid,new HashSet<String>());
 		return true;
 	}
 	
@@ -75,57 +89,87 @@ public class TransactionManagerImpl
 		System.out.println("committing "+xid);
 		tryconnect();
 		HashSet<String> curtable = TransTrace.get(xid);
-		if(curtable==null) return false;
-		boolean vote = true;
+		HashSet<String> curtable_readonly = TransTraceReadonly.get(xid);
+		if(curtable==null||curtable_readonly==null) return false;
 		
+		boolean vote = true;
+		boolean rmentry = true;
 		//send prepare and see what happen
+		TransStates.put(xid, PREPARING);
 		try{
-		for(String RMIName: curtable){
+			for(String RMIName: curtable_readonly){  
 				System.out.println("send prepare to "+RMIName);
 				if(RMIName.equals(RMINameFlights))
-					rmFlights.prepare(xid);
+					rmFlights.prepare(xid, true);
 						
-				if(RMIName.equals(RMINameCars))
-					rmCars.prepare(xid);
+				else if(RMIName.equals(RMINameCars))
+					rmCars.prepare(xid, true);
 						
-				if(RMIName.equals(RMINameRooms))
-					rmRooms.prepare(xid);
+				else if(RMIName.equals(RMINameRooms))
+					rmRooms.prepare(xid, true);
 						
-				if(RMIName.equals(RMINameCustomers))
-					rmCustomers.prepare(xid);
+				else if(RMIName.equals(RMINameCustomers))
+					rmCustomers.prepare(xid, true);
+			}
+			for(String RMIName: curtable){
+				System.out.println("send prepare to "+RMIName);
+				if(RMIName.equals(RMINameFlights))
+					rmFlights.prepare(xid, false);
 						
-		}} catch(TransactionAbortedException tbrt){
+				else if(RMIName.equals(RMINameCars))
+					rmCars.prepare(xid, false);
+						
+				else if(RMIName.equals(RMINameRooms))
+					rmRooms.prepare(xid, false);
+						
+				else if(RMIName.equals(RMINameCustomers))
+					rmCustomers.prepare(xid, false);
+						
+			}
+		}catch(TransactionAbortedException tbrt){
+			vote = false;
+		}catch(RemoteException re){
+			//can't connect, should abort..
 			vote = false;
 		}
 
 		//send commit or abort  //here should be logged
 		if(vote){
 			System.out.println(xid+"everyone votes yes");
+			TransStates.put(xid, COMMITTING);
 			for(String RMIName: curtable){
 				try {
-					if(RMIName.equals(RMINameFlights))
+					if(RMIName.equals(RMINameFlights)&&rmFlights!=null)
 						rmFlights.commit(xid);
-					if(RMIName.equals(RMINameCars))
+					else if(RMIName.equals(RMINameCars)&&rmFlights!=null)
 						rmCars.commit(xid);
-					if(RMIName.equals(RMINameRooms))
+					else if(RMIName.equals(RMINameRooms)&&rmFlights!=null)
 						rmRooms.commit(xid);
-					if(RMIName.equals(RMINameCustomers))
+					else if(RMIName.equals(RMINameCustomers)&&rmFlights!=null)
 						rmCustomers.commit(xid);
+					else{
+						rmentry = false; //if reach here, means some RM is dead. shouldn't remove entry..
+					}
+					
 				} catch (RemoteException e) {
 					// TODO Auto-generated catch block
-					e.printStackTrace();
+					System.out.println("impossible to reach");  //never reach here.
 				} catch (TransactionAbortedException e) {
 					// TODO Auto-generated catch block
-					e.printStackTrace();
+					System.out.println("impossible to abort in committing"); //never reach here.
+					
 				}	
 			}
 		}else 	{
 			System.out.println(xid+"someone vote no");
 			this.abort(xid);
 			throw new TransactionAbortedException(xid,"can't commit");
-		}
 			
-		TransTrace.remove(curtable);
+		}
+		if(rmentry){
+			TransTrace.remove(xid);
+			TransTraceReadonly.remove(xid);
+		}
 		return true;
 	}
 
@@ -134,22 +178,35 @@ public class TransactionManagerImpl
 	public boolean abort(int xid) 
 			throws RemoteException{
 		System.out.println("aborting "+xid);
+		TransStates.put(xid, ABORTING);
 		tryconnect();
 		HashSet<String> curtable = TransTrace.get(xid);
-		if(curtable==null) return false;
-		for(String RMIName: curtable){
-
-				if(RMIName.equals(RMINameFlights))
-					rmFlights.abort(xid);
-				else if(RMIName.equals(RMINameCars))
-					rmCars.abort(xid);
-				else if(RMIName.equals(RMINameRooms))
-					rmRooms.abort(xid);
-				else if(RMIName.equals(RMINameCustomers))
-					rmCustomers.abort(xid);
-	
+		HashSet<String> curtable_readonly = TransTraceReadonly.get(xid);
+		if(curtable==null||curtable_readonly ==null) return false;
+		for(String RMIName: curtable_readonly){
+			System.out.println("aborting readonly"+RMIName);
+			if(RMIName.equals(RMINameFlights)&&rmFlights!=null)
+				rmFlights.abort(xid);
+			else if(RMIName.equals(RMINameCars)&&rmCars!=null)
+				rmCars.abort(xid);
+			else if(RMIName.equals(RMINameRooms)&&rmRooms!=null)
+				rmRooms.abort(xid);
+			else if(RMIName.equals(RMINameCustomers)&&rmCustomers!=null)
+				rmCustomers.abort(xid);
 		}
-		TransTrace.remove(curtable);
+		for(String RMIName: curtable){
+			System.out.println("aborting "+RMIName);
+			if(RMIName.equals(RMINameFlights)&&rmFlights!=null)
+				rmFlights.abort(xid);
+			else if(RMIName.equals(RMINameCars)&&rmCars!=null)
+				rmCars.abort(xid);
+			else if(RMIName.equals(RMINameRooms)&&rmRooms!=null)
+				rmRooms.abort(xid);
+			else if(RMIName.equals(RMINameCustomers)&&rmCustomers!=null)
+				rmCustomers.abort(xid);
+		}
+		TransTrace.remove(xid);
+		TransTraceReadonly.remove(xid);
 		// TODO Auto-generated method stub
 		return true;
 	}
@@ -189,35 +246,129 @@ public class TransactionManagerImpl
 	}
 	
 	protected void tryconnect() throws RemoteException{
+		String testing = "";
+		//while(true)
 		try{
+			testing = RMINameFlights;
 			rmFlights.tryconnect();
+			testing = RMINameCars;
 			rmCars.tryconnect();
+			testing = RMINameRooms;
 			rmRooms.tryconnect();
+			testing = RMINameCustomers;
 			rmCustomers.tryconnect();
+			return;
 		}catch(RemoteException re){
 			System.err.println("Some RM is lost");
-			connect();
+			reconnect(testing);  //maybe in a loop or just connect all ... in the case of multiple RMs failed
+		}
+		catch(NullPointerException e){
+			System.err.println("Some RM already lost");
+			reconnect(testing);  //
+		}
+		//try again
+		try{
+			testing = RMINameFlights;
+			rmFlights.tryconnect();
+			testing = RMINameCars;
+			rmCars.tryconnect();
+			testing = RMINameRooms;
+			rmRooms.tryconnect();
+			testing = RMINameCustomers;
+			rmCustomers.tryconnect();
+		}catch(RemoteException re){
+			//..
+			if(testing.equals(RMINameFlights)){
+				 rmFlights = null; 
+				 System.out.println("TM not bound to RMFlights");
+			}else
+			if(testing.equals(RMINameCars)){
+				rmCars = null;
+			    System.out.println("TM not bound to RMCars");
+			}else
+			if(testing.equals(RMINameRooms)){
+				rmRooms = null;
+			    System.out.println("TM not bound to RMRooms");
+			}else
+			if(testing.equals(RMINameCustomers)){
+				rmCustomers = null;
+			    System.out.println("TM not bound to RMCustomers");
+			}
 		}
 	}
+	
+	protected boolean reconnect(String RMIName)
+			throws RemoteException{
+		String rmiPort = System.getProperty("rmiPort");
+		if (rmiPort == null) {
+		    rmiPort = "";
+		} else if (!rmiPort.equals("")) {
+		    rmiPort = "//:" + rmiPort + "/";
+		}
+		try {
+			if(RMIName.equals(RMINameFlights)){
+				 rmFlights =
+					(ResourceManager)Naming.lookup(rmiPort +
+								       ResourceManager.RMINameFlights);
+			}
+			if(RMIName.equals(RMINameCars)){
+				rmCars =
+				(ResourceManager)Naming.lookup(rmiPort +
+							       ResourceManager.RMINameCars);
+			}
+			if(RMIName.equals(RMINameRooms)){
+				rmRooms =
+				(ResourceManager)Naming.lookup(rmiPort +
+							       ResourceManager.RMINameRooms);
+			}
+			if(RMIName.equals(RMINameCustomers)){
+				rmCustomers =
+				(ResourceManager)Naming.lookup(rmiPort +
+							       ResourceManager.RMINameCustomers);
+			}
+		} 
+		catch (Exception e) {
+		    System.err.println("TM cannot bind to:" + RMIName + e);
+		    return false;
+		}
+		
+		return true;
+	}
+	
 	@Override
 	public boolean enlist(int xid, String RMIName) 
 			throws RemoteException,InvalidTransactionException{
 		// TODO Auto-generated method stub
+		if(TransTraceReadonly.get(xid).contains(RMIName))  //if in readonly list, delete;
+			TransTraceReadonly.get(xid).remove(RMIName);
 		HashSet<String> curtable = TransTrace.get(xid);
 		if(curtable==null) throw new InvalidTransactionException(xid, RMIName);
-		if(!flag_ref){
-			if(connect())
-				flag_ref = true;
-		}
-			
 		curtable.add(RMIName);
 		return true;
 	}
 
+	public boolean enlist_readonly(int xid, String RMIName) 
+			throws RemoteException,InvalidTransactionException{
+		// TODO Auto-generated method stub
+		if(TransTrace.contains(xid))  //if in normal list, return;
+			return true;
+		HashSet<String> curtable = TransTraceReadonly.get(xid);
+		if(curtable==null) throw new InvalidTransactionException(xid, RMIName);
+		curtable.add(RMIName);
+		
+		return true;
+	}
+	
+	public int check_status(int xid) 
+			throws RemoteException{
+		if(!TransStates.containsKey(xid))
+			return -1;
+		return TransStates.get(xid);
+	}
+	
 	boolean dieTMBeforeCommit = false;
 	boolean dieTMAfterCommit = false;
 
-	
     public boolean dieTMBeforeCommit()
 	throws RemoteException {
     	dieTMBeforeCommit = true;

@@ -430,7 +430,14 @@ public class WorkflowControllerImpl
     }
     public boolean dieRMAfterEnlist(String who)
 	throws RemoteException {
-    	
+		if(who.equals("RMFlights"))
+			rmFlights.dieRMAfterEnlist();
+		if(who.equals("RMCars"))
+			rmCars.dieRMAfterEnlist();
+		if(who.equals("RMRooms"))
+			rmRooms.dieRMAfterEnlist();
+		if(who.equals("RMCustomers"))
+			rmCustomers.dieRMAfterEnlist();
     	return true;
     }
     public boolean dieRMBeforePrepare(String who)

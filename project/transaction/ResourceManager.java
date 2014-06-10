@@ -45,7 +45,7 @@ public interface ResourceManager extends Remote {
 	     * @throws TransactionAbortedException if transaction was aborted.
 	     * @throws InvalidTransactionException if transaction id is invalid.
 	*/
-	    public boolean prepare(int xid) 
+	    public boolean prepare(int xid, boolean readonly) 
 	    throws RemoteException,
 	    TransactionAbortedException;
 
