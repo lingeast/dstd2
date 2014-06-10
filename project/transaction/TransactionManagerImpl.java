@@ -339,10 +339,10 @@ public class TransactionManagerImpl
 	public boolean enlist(int xid, String RMIName) 
 			throws RemoteException,InvalidTransactionException{
 		// TODO Auto-generated method stub
-		if(TransTraceReadonly.get(xid).contains(RMIName))  //if in readonly list, delete;
-			TransTraceReadonly.get(xid).remove(RMIName);
 		HashSet<String> curtable = TransTrace.get(xid);
 		if(curtable==null) throw new InvalidTransactionException(xid, RMIName);
+		if(TransTraceReadonly.get(xid).contains(RMIName))  //if in readonly list, delete;
+			TransTraceReadonly.get(xid).remove(RMIName);
 		curtable.add(RMIName);
 		return true;
 	}
