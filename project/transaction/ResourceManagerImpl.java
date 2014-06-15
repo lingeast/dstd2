@@ -273,23 +273,23 @@ public class ResourceManagerImpl
 		List<RMLog> logs =  RML.LogSequenceAfter(pageLSN); //keep unchanged during recovering
 		if(logs.size()>0){
 			HashSet<Integer> actTrans = new HashSet<Integer>();
-			HashSet<Integer> cmtTrans = new HashSet<Integer>();
+			//HashSet<Integer> cmtTrans = new HashSet<Integer>();
 			HashSet<Integer> abtTrans = new HashSet<Integer>();
 			HashSet<Integer> preTrans = new HashSet<Integer>();
 			System.out.println("Reconstruct Transaction Table with log_size:" +logs.size() );
 		for (RMLog log : logs) {
 			actTrans.add(log.xid);
 			if (log.type == RMLog.COMMIT) {
-				if (!cmtTrans.add(log.xid)) {
-					throw new IllegalArgumentException("same transaction commit twice!");
-				}
+//				if (!cmtTrans.add(log.xid)) {
+//					throw new IllegalArgumentException("same transaction commit twice!");
+//				}
 				System.out.println(log.xid+" is commited");
 				actTrans.remove(log.xid);
 				preTrans.remove(log.xid);   //should remove preparing transaction
 			}else if(log.type == RMLog.ABORT){  //no need to redo or undo aborted transaction(only for higher efficiency)
-				if (!abtTrans.add(log.xid)) {
-					throw new IllegalArgumentException("same transaction abort twice!");
-				}
+			//	if (!abtTrans.add(log.xid)) {
+			//		throw new IllegalArgumentException("same transaction abort twice!");
+			//	}
 				System.out.println(log.xid+" is aborted");
 				actTrans.remove(log.xid);
 				preTrans.remove(log.xid);
@@ -312,17 +312,29 @@ public class ResourceManagerImpl
 				preparingXID = preTrans.toArray(new Integer[1])[0];
 			} else { 
 				// TODO: Why can not hava more than 1 prepareing trans?
-				System.err.println("impossible for more than one preparing transactions");
+				System.err.println("more than one preparing transactions is supported now");
 			}
 		}
 		
-		if(tm.check_status(preparingXID)==2){ //ready to aborted
-			preparing = false;
-			actTrans.add(preparingXID);
+		switch(tm.check_status(preparingXID)){
+			case 0://preparing
+				break;
+			case 1://commit
+				preparing = false;
+				preTrans.remove(preparingXID);
+				//cmtTrans.add(preparingXID);
+				break;
+			case 2:
+				preparing = false;
+				preTrans.remove(preparingXID);
+				actTrans.add(preparingXID);
+				break;
+				
 		}
+
 		for (RMLog log : logs) {
 			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE // Normal Ops
-					|| log.type == RMLog.CLR ) {	//CLRs
+					 ) {	//CLRs|| log.type == RMLog.CLR
 				// redo in memory database
 				if (true) { //redo all now, including aborted transactions and their CLRs
 				//if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
@@ -379,9 +391,7 @@ public class ResourceManagerImpl
 			ois.close();
 		}
 		//if preparing..should handle it.
-		if(preparing)
-			;//tm.checkpre(preparingXID);
-		}
+
 		
 	}
 
