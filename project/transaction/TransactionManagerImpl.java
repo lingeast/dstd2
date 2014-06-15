@@ -76,6 +76,7 @@ public class TransactionManagerImpl
     	TML = new TMLogManager("TMLog");
     	recover();
     	System.out.println("After TM recovery, " + TransStates.size() + "is recoverd");
+    	this.connect();
     }
 
     /*
@@ -190,6 +191,7 @@ public class TransactionManagerImpl
 			} catch (IOException e) {
 				return false;
 			}
+			
 			
 			for(String RMIName: curtable){
 				try {
