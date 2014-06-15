@@ -310,15 +310,19 @@ public class ResourceManagerImpl
 			preparing = true;
 			if(preTrans.size() == 1) {
 				preparingXID = preTrans.toArray(new Integer[1])[0];
-			}else  
+			} else { 
+				// TODO: Why can not hava more than 1 prepareing trans?
 				System.err.println("impossible for more than one preparing transactions");
+			}
 		}
+		
 		if(tm.check_status(preparingXID)==2){ //ready to aborted
 			preparing = false;
 			actTrans.add(preparingXID);
 		}
 		for (RMLog log : logs) {
-			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE ) {
+			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE // Normal Ops
+					|| log.type == RMLog.CLR ) {	//CLRs
 				// redo in memory database
 				if (true) { //redo all now, including aborted transactions and their CLRs
 				//if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
@@ -342,7 +346,7 @@ public class ResourceManagerImpl
 		//undo here can use preLSN
 		System.out.println("Undo Phase");
 		for (int i = logs.size() - 1; i >= 0; i--) {
-			System.out.println("pulling:LSN="+i);
+			System.out.println("pulling:LSN=" + i);
 			RMLog log = logs.get(i);
 			if (actTrans.contains(log.xid)) {
 				System.out.println("Undoing:"+log.table+":"+log.key);
@@ -356,7 +360,9 @@ public class ResourceManagerImpl
 					 * actTrans.remove(log.xid);
 					 * */
 					}
-			} /* else if(actTrans.isEmpty())
+			} 
+			
+			/* else if(actTrans.isEmpty())
 				break;*/
 			/*else if (log.type == RMLog.CLR) {
 				// Find CLR record and 
@@ -483,7 +489,9 @@ public class ResourceManagerImpl
     	return true;
     }
 
-    public void abort(int xid)  //2 cases when call abort: 1. normal 2. after recover 
+    //2 cases when call abort: 1. normal 2. after recover
+    // TODO: Recover abort is not done in this method
+    public void abort(int xid)   
 	throws RemoteException {
     	// locks acquired during DO operations are enough
     	if(dieRMBeforeAbort)
@@ -500,7 +508,7 @@ public class ResourceManagerImpl
     				return;
     			else if (log.type == RMLog.REMOVE || log.type == RMLog.PUT) {
     				this.undoOnTable(log);
-    				i = log.preLSN+1; 
+    				i = log.preLSN + 1; 
     			}else if (log.type == RMLog.COMMIT)
     				throw new RemoteException();
     			//jump to previous one
@@ -1439,12 +1447,14 @@ class RMLog implements Serializable {
 		 fis = null;
 	 }
 
-	 
+	 /*
+	  * Add CLR log
+	  */
 	 public void newLog(int type, int xid, int chainLSN, String table, String key, Object before, Object after) {
 		 if (type != RMLog.CLR) {
 			 throw new IllegalArgumentException("non-CLR Should not call this method");
 		 }
-		 if(logQueue.isEmpty()&&logSeq.size()>chainLSN)//after recover, the record maybe in logSeq but not logQueue
+		 if(logQueue.isEmpty() && logSeq.size() > chainLSN)//after recover, the record maybe in logSeq but not logQueue
 			 chainLSN = logSeq.get(chainLSN).preLSN;  //UndoNxtLSN = preLSN of the undoing LSN
 		 else{
 			 chainLSN = logQueue.get(chainLSN-logSeq.size()).preLSN; 
@@ -1454,6 +1464,9 @@ class RMLog implements Serializable {
 		 return;
 	 }
 	 
+	 /*
+	  * Add Non-CLR log, flush immediately if 
+	  */
 	 public void newLog(int type, int xid, String table, String key, Object before, Object after) throws RemoteException {
 		 if (type == RMLog.CLR) {
 			 throw new IllegalArgumentException("CLR shouldn't call this method");
