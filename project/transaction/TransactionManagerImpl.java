@@ -121,6 +121,10 @@ public class TransactionManagerImpl
 			throws RemoteException, TransactionAbortedException {
 		// TODO Auto-generated method stub
 		System.out.println("committing "+xid);
+		
+		if (dieTMBeforeCommit)
+			this.dieNow();
+		
 		tryconnect();
 		
 		if(this.TransTrace == null || this.TransTraceReadonly == null) 
