@@ -343,6 +343,7 @@ public class WorkflowControllerImpl
     // TECHNICAL/TESTING INTERFACE
     public boolean reconnect()
 	throws RemoteException {
+    	System.out.println("WC reconnect");
 	String rmiPort = System.getProperty("rmiPort");
 	if (rmiPort == null) {
 	    rmiPort = "";

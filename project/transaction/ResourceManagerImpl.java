@@ -75,9 +75,14 @@ public class ResourceManagerImpl
     	    rmiPort = "//:" + rmiPort + "/";
     	}
 
+    	ResourceManagerImpl obj = null;
     	try {
-    	    ResourceManagerImpl obj = new ResourceManagerImpl(rmiName);
-    	    Naming.rebind(rmiPort + rmiName, obj);
+    	    obj = new ResourceManagerImpl(rmiName);
+    	} catch (Exception e) {
+    		System.out.println(rmiName + "not created" + e);
+    	}
+    	try {
+    		Naming.rebind(rmiPort + rmiName, obj);
     	    System.out.println(rmiName + " bound");
     	} 
     	catch (Exception e) {
@@ -340,10 +345,10 @@ public class ResourceManagerImpl
 				if (true) { //redo all now, including aborted transactions and their CLRs
 				//if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
 					System.out.println("Redoing:LSN:"+log.LSN+log.table+":"+log.key);
-					if(myRMIName.equals(RMINameRooms))
+					if(myRMIName.equals(RMINameRooms)){
 						if(log.beforeVal !=null)
 							System.out.print(((Hotel)(log.beforeVal)).numRooms);
-						System.out.println(";"+((Hotel)(log.afterVal)).numRooms);
+						System.out.println(";"+((Hotel)(log.afterVal)).numRooms);}
 					this.redoOnTable(log);
 					if(preparing&&log.xid==preparingXID) //prepare phase need reacquire lock
 						try {
@@ -567,7 +572,7 @@ public class ResourceManagerImpl
         curFlight.numAvail+=numSeats;
         if(curFlight.numSeats<0||curFlight.numSeats<0)
         	return false;
-        RML.newLog(RMLog.PUT, xid, tableName, flightNum, oldFlight, curFlight);
+        RML.newLog(RMLog.PUT, xid, tableName, flightNum, oldFlight, new Flight(curFlight));
     	return true;
     }
 
@@ -651,7 +656,7 @@ public class ResourceManagerImpl
             hotels.remove(location);
             curHotel = null;
         }
-        RML.newLog(RMLog.REMOVE, xid, tableName, location, oldHotel, curHotel);
+        RML.newLog(RMLog.REMOVE, xid, tableName, location, oldHotel, new Hotel(curHotel));
 
         return true;
     }
@@ -684,7 +689,7 @@ public class ResourceManagerImpl
         curCar.numCars += numCars;
         curCar.numAvail += numCars;
         
-        RML.newLog(RMLog.PUT, xid, tableName, location, oldCar, curCar);
+        RML.newLog(RMLog.PUT, xid, tableName, location, oldCar, new Car(curCar));
         return true;
     }
 
@@ -717,7 +722,7 @@ public class ResourceManagerImpl
             curCar = null;
         }
         
-        RML.newLog(RMLog.REMOVE, xid, tableName, location, oldCar, curCar);
+        RML.newLog(RMLog.REMOVE, xid, tableName, location, oldCar, new Car(curCar));
         return true;
     }
 
@@ -745,8 +750,8 @@ public class ResourceManagerImpl
     		curList = new ArrayList<Reservation> ();
     		reservations.put(custName, curList);
     	}
-        RML.newLog(RMLog.PUT, xid, tableName, custName, null, curCustomer);
-        RML.newLog(RMLog.PUT, xid, "reservations", custName, null, curList);
+        RML.newLog(RMLog.PUT, xid, tableName, custName, null, new Customer(curCustomer));
+        RML.newLog(RMLog.PUT, xid, "reservations", custName, null, new ArrayList<Reservation> (curList));
         return true;
     }
 

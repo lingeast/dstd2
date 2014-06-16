@@ -29,6 +29,9 @@ make server
 make client
 
 cd ../test.part2
+rm results/*
+rm data/*
+
 export CLASSPATH=".:gnujaxp.jar"
 
 

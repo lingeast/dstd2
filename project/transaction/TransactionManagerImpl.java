@@ -55,27 +55,49 @@ public class TransactionManagerImpl
 	    rmiPort = "//:" + rmiPort + "/";
 	}
 
+	TransactionManagerImpl obj = null;
 	try {
-		TransactionManagerImpl obj = new TransactionManagerImpl();
+		obj = new TransactionManagerImpl();
+	} catch (Exception e) {
+		System.err.println("TM not created:" + e);
+		
+	}
+	
+	try {
 	    Naming.rebind(rmiPort + TransactionManager.RMIName, obj);
+	} catch (Exception e) {
 	    System.out.println("TM bound");
 	} 
+	/*
 	catch (Exception e) {
 	    System.err.println("TM not bound:" + e);
 	    System.exit(1);
 	}
+	*/
     }
     
     
     public TransactionManagerImpl() 
     		throws RemoteException, IOException, ClassNotFoundException {
+    	
     	TransTrace = new Hashtable<Integer, HashSet<String>> ();
     	TransTraceReadonly = new Hashtable<Integer, HashSet<String>> ();
     	TransStates = new Hashtable<Integer, Integer> ();
     	flag_ref = false;
-    	TML = new TMLogManager("TMLog");
-    	recover();
-    	System.out.println("After TM recovery, " + TransStates.size() + "is recoverd");
+    	
+    	try {
+    		TML = new TMLogManager("TMLog");
+    	} catch (Exception e) {
+    		System.out.println("Log Mananger Init failed: " + e);
+    	}
+    	
+    	try {
+    		recover();
+    	} catch (IOException e) {
+    		System.out.println("Recover from file failed: " + e);
+    	}
+    	
+    	System.out.println("After TM recovery, " + TransStates.size() + " is recoverd");
     	this.connect();
     }
 
@@ -89,8 +111,10 @@ public class TransactionManagerImpl
     	for (TMLog log : stateLog) {
     		if (log.type == TMLog.COMMIT) {
     			TransStates.put(log.xid, this.COMMITTING);
+    			TransTrace.put(log.xid, new HashSet<String>(log.RMs));
     		} else if (log.type == TMLog.END) {
     			TransStates.remove(log.xid);
+    			TransTrace.remove(log.xid);
     		}
     	}
     }
@@ -197,6 +221,12 @@ public class TransactionManagerImpl
 			}
 			
 			
+			if (dieTMAfterCommit) {
+				System.out.println("Die after Commit Now");
+				this.dieNow();
+			}
+				
+			
 			for(String RMIName: curtable){
 				try {
 					if(RMIName.equals(RMINameFlights) && rmFlights!=null)
@@ -232,8 +262,7 @@ public class TransactionManagerImpl
 			TransTrace.remove(xid);
 			TransTraceReadonly.remove(xid);
 		}
-		if (dieTMAfterCommit)
-			this.dieNow();
+
 		return true;
 	}
 
@@ -490,7 +519,11 @@ class TMLogManager {
 	 public TMLogManager(String tmName) throws ClassNotFoundException, IOException {
 		 TMName = tmName;
 		 logName = dirName + TMName + logSuffix;
-		 logSeq = this.LogSequenceInFile();
+		 try {
+			 logSeq = this.LogSequenceInFile();
+		 } catch (Exception e) {
+			 System.out.println("Read log file failed" + e);
+		 }
 		 
 		 logQueue = new LinkedList<TMLog>();
 	 }
@@ -590,6 +623,7 @@ class TMLogManager {
 		 }
 		 oos.flush();
 		 fos.flush();
+		 this.closeOutputStream();
 		 
 	 }
 	 
@@ -603,13 +637,19 @@ class TMLogManager {
 	  */
 	 public ArrayList<TMLog> LogSequenceInFile() throws IOException, ClassNotFoundException {
 		 
-		 this.closeOutputStream();
+		 try {
+			 this.closeOutputStream();
+		 } catch (IOException e) {
+			 System.out.println("Close out put stream failed " + e);
+		 }
 		 
 		 try {
 			 this.setInputStream();
 		 } catch (FileNotFoundException fne) {
+			 System.out.println("No Exising TM Log file: " + fne);
 			 return new ArrayList<TMLog>();
-		 } catch(IOException ie){  //last time may not close os
+		 } catch(IOException ie){  
+			 System.out.println("Error Setting Input Object Stream: " + ie);
 			 return new ArrayList<TMLog>();
 		 }
 
@@ -621,6 +661,9 @@ class TMLogManager {
 				//System.out.println("read a log"+rmlog.table+rmlog.key);
 			 } catch (EOFException eofe) {
 				 // End of File
+				 break;
+			 } catch (IOException e) {
+				 System.out.println("Read a log failed: " + e);
 				 break;
 			 }
 			 logList.add(tmlog);
