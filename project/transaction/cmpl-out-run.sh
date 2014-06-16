@@ -36,6 +36,6 @@ export CLASSPATH=".:gnujaxp.jar"
 
 
 javac RunTests.java
-java  -DrmiPort=4444 RunTests PART.xml
+java  -DrmiPort=4444 RunTests MASTER.xml
 
 pidof rmiregistry
