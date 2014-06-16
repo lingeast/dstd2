@@ -120,6 +120,9 @@ public class TransactionManagerImpl
     }
     public boolean dieNow() 
 	throws RemoteException {
+    if (TML != null) {
+    	TML.close();
+    }
 	System.exit(1);
 	return true; // We won't ever get here since we exited above;
 	             // but we still need it to please the compiler.
@@ -556,6 +559,8 @@ class TMLogManager {
 
 	 private void setOutputStream() throws IOException, FileNotFoundException {
 		 
+		 if (fos != null && oos != null) return;
+		 
 		 try {
 			 fos = new FileOutputStream(logName, true);
 		 } catch (FileNotFoundException fe) {
@@ -588,8 +593,8 @@ class TMLogManager {
 	  */
 
 	 private void setInputStream() throws FileNotFoundException, IOException {
-		fis = new FileInputStream(logName);
-		ois = new ObjectInputStream(fis);
+			 fis = new FileInputStream(logName);
+			 ois = new ObjectInputStream(fis);
 	 }
 
 	 /*
@@ -615,7 +620,7 @@ class TMLogManager {
 
 
 	 public void flushLog(int LSN) throws IOException {
-		 this.closeInputStream();
+		 
 		 this.setOutputStream();
 		 
 		 while(!logQueue.isEmpty() && logQueue.peekFirst().LSN <= LSN) {
@@ -623,7 +628,14 @@ class TMLogManager {
 		 }
 		 oos.flush();
 		 fos.flush();
-		 this.closeOutputStream();
+		 
+		 System.out.println("Flush TMLog End");
+		 // TODO: test
+		 try {
+			 ArrayList<TMLog> tmp = this.LogSequenceInFile();
+		 } catch (Exception e) {
+			 System.out.println("Test Immediate Read failed: " + e);
+		 }
 		 
 	 }
 	 
@@ -636,12 +648,12 @@ class TMLogManager {
 	  *   Empty ArrayList if no logs on disk
 	  */
 	 public ArrayList<TMLog> LogSequenceInFile() throws IOException, ClassNotFoundException {
-		 
-		 try {
-			 this.closeOutputStream();
+		 /*try {
+			 this.closeInputStream();
 		 } catch (IOException e) {
-			 System.out.println("Close out put stream failed " + e);
+			 System.out.println("Close stream failed " + e);
 		 }
+		 */
 		 
 		 try {
 			 this.setInputStream();
@@ -669,7 +681,7 @@ class TMLogManager {
 			 logList.add(tmlog);
 		 }
 		 ///not sure
-		 //this.closeInputStream();
+		 this.closeInputStream();
 		 return logList;
 	 }
 }
