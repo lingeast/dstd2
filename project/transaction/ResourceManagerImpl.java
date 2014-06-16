@@ -273,16 +273,16 @@ public class ResourceManagerImpl
 		List<RMLog> logs =  RML.LogSequenceAfter(pageLSN); //keep unchanged during recovering
 		if(logs.size()>0){
 			HashSet<Integer> actTrans = new HashSet<Integer>();
-			//HashSet<Integer> cmtTrans = new HashSet<Integer>();
+			HashSet<Integer> cmtTrans = new HashSet<Integer>();
 			HashSet<Integer> abtTrans = new HashSet<Integer>();
 			HashSet<Integer> preTrans = new HashSet<Integer>();
 			System.out.println("Reconstruct Transaction Table with log_size:" +logs.size() );
 		for (RMLog log : logs) {
 			actTrans.add(log.xid);
 			if (log.type == RMLog.COMMIT) {
-//				if (!cmtTrans.add(log.xid)) {
-//					throw new IllegalArgumentException("same transaction commit twice!");
-//				}
+				if (!cmtTrans.add(log.xid)) {
+					throw new IllegalArgumentException("same transaction commit twice!");
+				}
 				System.out.println(log.xid+" is commited");
 				actTrans.remove(log.xid);
 				preTrans.remove(log.xid);   //should remove preparing transaction
@@ -320,9 +320,10 @@ public class ResourceManagerImpl
 			case 0://preparing
 				break;
 			case 1://commit
+				System.out.println("committing");
 				preparing = false;
 				preTrans.remove(preparingXID);
-				//cmtTrans.add(preparingXID);
+				cmtTrans.add(preparingXID);
 				break;
 			case 2:
 				preparing = false;
@@ -338,7 +339,11 @@ public class ResourceManagerImpl
 				// redo in memory database
 				if (true) { //redo all now, including aborted transactions and their CLRs
 				//if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
-					System.out.println("Redoing:"+log.table+":"+log.key);
+					System.out.println("Redoing:LSN:"+log.LSN+log.table+":"+log.key);
+					if(myRMIName.equals(RMINameRooms))
+						if(log.beforeVal !=null)
+							System.out.print(((Hotel)(log.beforeVal)).numRooms);
+						System.out.println(";"+((Hotel)(log.afterVal)).numRooms);
 					this.redoOnTable(log);
 					if(preparing&&log.xid==preparingXID) //prepare phase need reacquire lock
 						try {
@@ -393,6 +398,7 @@ public class ResourceManagerImpl
 		//if preparing..should handle it.
 
 		
+		}
 	}
 
 	public boolean reconnect()
@@ -614,8 +620,8 @@ public class ResourceManagerImpl
         	curHotel.price = price;	// directly overwrite
         curHotel.numRooms += numRooms;
         curHotel.numAvail += numRooms;
-
-        RML.newLog(RMLog.PUT, xid, tableName, location, oldHotel, curHotel);
+        System.out.println( curHotel.numRooms);
+        RML.newLog(RMLog.PUT, xid, tableName, location, oldHotel, new Hotel(curHotel));
         return true;
     }
 
@@ -1481,7 +1487,6 @@ class RMLog implements Serializable {
 		 if (type == RMLog.CLR) {
 			 throw new IllegalArgumentException("CLR shouldn't call this method");
 		 } 
-		 
 		 int lastLSN = -1;
 		 // if DO operation log, then find its prevLSN
 		 if(TransLast.containsKey(xid)) {

@@ -232,6 +232,8 @@ public class TransactionManagerImpl
 			TransTrace.remove(xid);
 			TransTraceReadonly.remove(xid);
 		}
+		if (dieTMAfterCommit)
+			this.dieNow();
 		return true;
 	}
 
