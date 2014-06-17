@@ -15,6 +15,7 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.rmi.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -79,7 +80,7 @@ public class ResourceManagerImpl
     	try {
     	    obj = new ResourceManagerImpl(rmiName);
     	} catch (Exception e) {
-    		System.out.println(rmiName + "not created" + e);
+    		System.err.println(rmiName + "not created" + e);
     	}
     	try {
     		Naming.rebind(rmiPort + rmiName, obj);
@@ -273,36 +274,39 @@ public class ResourceManagerImpl
 			// no database on disk
 			pageLSN = -1;
 		}
-		System.out.println("Recover from disk FINISHED");
+		//System.out.println("Recover from disk FINISHED");
 		
 		List<RMLog> logs =  RML.LogSequenceAfter(pageLSN); //keep unchanged during recovering
 		if(logs.size()>0){
 			HashSet<Integer> actTrans = new HashSet<Integer>();
 			HashSet<Integer> cmtTrans = new HashSet<Integer>();
-			HashSet<Integer> abtTrans = new HashSet<Integer>();
+			//HashSet<Integer> abtTrans = new HashSet<Integer>();
 			HashSet<Integer> preTrans = new HashSet<Integer>();
-			System.out.println("Reconstruct Transaction Table with log_size:" +logs.size() );
+			HashMap<Integer,Integer> TransMap = new HashMap<Integer,Integer> ();
+			//System.out.println("Reconstruct Transaction Table with log_size:" +logs.size() );
 		for (RMLog log : logs) {
 			actTrans.add(log.xid);
+			//record last LSN
+			TransMap.put(log.xid,log.LSN);
 			if (log.type == RMLog.COMMIT) {
 				if (!cmtTrans.add(log.xid)) {
 					throw new IllegalArgumentException("same transaction commit twice!");
 				}
-				System.out.println(log.xid+" is commited");
+				//System.out.println(log.xid+" is commited");
 				actTrans.remove(log.xid);
 				preTrans.remove(log.xid);   //should remove preparing transaction
 			}else if(log.type == RMLog.ABORT){  //no need to redo or undo aborted transaction(only for higher efficiency)
 			//	if (!abtTrans.add(log.xid)) {
 			//		throw new IllegalArgumentException("same transaction abort twice!");
 			//	}
-				System.out.println(log.xid+" is aborted");
+				//System.out.println(log.xid+" is aborted");
 				actTrans.remove(log.xid);
 				preTrans.remove(log.xid);
 			}else if(log.type == RMLog.PREPARE){  // need to redo and get lock again..
 				if (!preTrans.add(log.xid)) {
 					throw new IllegalArgumentException("same transaction prepare twice!");
 				}
-				System.out.println(log.xid+" is prepare");
+				//System.out.println(log.xid+" is prepare");
 				actTrans.remove(log.xid);
 			}
 		}			
@@ -310,47 +314,50 @@ public class ResourceManagerImpl
 		//Redo phase
 		System.out.println("Redo Phase");
 		boolean preparing = false;
-		int preparingXID = -1;
+		Integer[] preparingXID = null;
 		if(!preTrans.isEmpty()){ //get preparing xid
 			preparing = true;
-			if(preTrans.size() == 1) {
-				preparingXID = preTrans.toArray(new Integer[1])[0];
-			} else { 
+			//if(preTrans.size() == 1) {
+				preparingXID = preTrans.toArray(new Integer[preTrans.size()]);
+			//} else { 
 				// TODO: Why can not hava more than 1 prepareing trans?
-				System.err.println("more than one preparing transactions is supported now");
-			}
-		}
-		
-		switch(tm.check_status(preparingXID)){
-			case 0://preparing
-				break;
-			case 1://commit
-				System.out.println("committing");
-				preparing = false;
-				preTrans.remove(preparingXID);
-				cmtTrans.add(preparingXID);
-				break;
-			case 2:
-				preparing = false;
-				preTrans.remove(preparingXID);
-				actTrans.add(preparingXID);
-				break;
-				
+			//	System.err.println("more than one preparing transactions is supported now");
+			//}
+				for(int pXID:preparingXID){
+					switch(tm.check_status(pXID)){
+						case 0://preparing
+							break;
+						case 1://commit
+							//System.out.println("committing");
+							preparing = false;
+							preTrans.remove(preparingXID);
+							cmtTrans.add(pXID);
+							break;
+						case 2:
+							preparing = false;
+							preTrans.remove(preparingXID);
+							actTrans.add(pXID);
+							break;
+							
+					}
+				}
 		}
 
+		//System.out.println("Straight forware redoing");
 		for (RMLog log : logs) {
 			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE // Normal Ops
 					 ) {	//CLRs|| log.type == RMLog.CLR
 				// redo in memory database
 				if (true) { //redo all now, including aborted transactions and their CLRs
 				//if(!abtTrans.contains(log.xid) ){ //except aborted transactions, others should be redo.
-					System.out.println("Redoing:LSN:"+log.LSN+log.table+":"+log.key);
+					/*System.out.println("Redoing:LSN:"+log.LSN+log.table+":"+log.key);
 					if(myRMIName.equals(RMINameRooms)){
 						if(log.beforeVal !=null)
 							System.out.print(((Hotel)(log.beforeVal)).numRooms);
 						System.out.println(";"+((Hotel)(log.afterVal)).numRooms);}
+						*/
 					this.redoOnTable(log);
-					if(preparing&&log.xid==preparingXID) //prepare phase need reacquire lock
+					if(preparing&&preTrans.contains(log.xid)) //prepare phase need reacquire lock
 						try {
 							lm.lock(log.xid, myRMIName+log.key, LockManager.WRITE);
 							RML.ActTransMap().put(log.xid, log.LSN);//get back to active transaction's list
@@ -364,33 +371,53 @@ public class ResourceManagerImpl
 			}
 		}
 		
+		//System.out.println("Creating Undo List");
+		List<Integer> list = new ArrayList<Integer>();
+		for(int undoTran: actTrans){
+			list.add(TransMap.get(undoTran));
+		}
+		Collections.sort( list );
 		// Undo phase
 		//undo here can use preLSN
 		System.out.println("Undo Phase");
+		
+		
+		while(!list.isEmpty()){
+			RMLog log = logs.get(list.remove(list.size()-1));
+			if (log.type == RMLog.PUT || log.type == RMLog.REMOVE) {
+				// write CLR log
+				// CLR = redo-only log, beforeVal and after Val are exact inverse
+				this.undoOnTable(log);
+
+				}
+			if(log.preLSN>0){
+				list.add(log.preLSN);
+			}
+		}
+		/*
+		//check all
 		for (int i = logs.size() - 1; i >= 0; i--) {
-			System.out.println("pulling:LSN=" + i);
+			//System.out.println("pulling:LSN=" + i);
 			RMLog log = logs.get(i);
 			if (actTrans.contains(log.xid)) {
-				System.out.println("Undoing:"+log.table+":"+log.key);
+				//System.out.println("Undoing:"+log.table+":"+log.key);
 				if (log.type == RMLog.PUT || log.type == RMLog.REMOVE) {
 					// write CLR log
 					// CLR = redo-only log, beforeVal and after Val are exact inverse
 					this.undoOnTable(log);
-					/* If remove, should create a copy to log abort and recall tm.abort
-					 * here we assume there are checkpoint so less needy to trace empty undo-list
-					 * if(log.preLSN == -1)
-					 * actTrans.remove(log.xid);
-					 * */
+
 					}
 			} 
+		
 			
 			/* else if(actTrans.isEmpty())
 				break;*/
 			/*else if (log.type == RMLog.CLR) {
 				// Find CLR record and 
 				undoedOp.add((Integer)log.beforeVal);
-			}*/
+			}
 		}
+	*/
 		for(int ids : actTrans){
 			RML.newLog(RMLog.ABORT, ids, tableName, null, null, null);
 		}
@@ -474,7 +501,7 @@ public class ResourceManagerImpl
     TransactionAbortedException {
     	if(dieRMBeforePrepare)
     		this.dieNow();
-    	System.out.println("Preparing"+readonly);
+    	//System.out.println("Preparing"+readonly);
     	// if the transaction make updates before, it will exist in log manager's actTrans or commited/aborted.
     	if(!RML.ActTransMap().containsKey(xid)){  //not prepare...or exist
     		throw new TransactionAbortedException(xid,"not exist");
@@ -496,11 +523,11 @@ public class ResourceManagerImpl
 	throws RemoteException,TransactionAbortedException {
     	if(dieRMBeforeCommit)
     		this.dieNow();
-    	System.out.println("Committing");
+    	//System.out.println("Committing");
     	if(cmtTransactions.contains(xid)) { //already committed 
     		return true;
     		}else if(!RML.ActTransMap().containsKey(xid)){  
-//not happen in 2PC, if xid is not committed or prepare, it's already aborted.(TM will not reach the phase to call this)
+    			//not happen in 2PC, if xid is not committed or prepare, it's already aborted.(TM will not reach the phase to call this)
     			throw new TransactionAbortedException(xid," not exist in database:"+myRMIName);
     		}
     	RML.newLog(RMLog.COMMIT, xid, tableName, null, null, null);
@@ -517,7 +544,7 @@ public class ResourceManagerImpl
     	// locks acquired during DO operations are enough
     	if(dieRMBeforeAbort)
     		this.dieNow();
-    	System.out.println("Aborting");
+    	//System.out.println("Aborting");
     	if(cmtTransactions.contains(xid)||!RML.ActTransMap().containsKey(xid)) { //already committed, can't abort
     		return;
     	}
@@ -625,7 +652,7 @@ public class ResourceManagerImpl
         	curHotel.price = price;	// directly overwrite
         curHotel.numRooms += numRooms;
         curHotel.numAvail += numRooms;
-        System.out.println( curHotel.numRooms);
+        //System.out.println( curHotel.numRooms);
         RML.newLog(RMLog.PUT, xid, tableName, location, oldHotel, new Hotel(curHotel));
         return true;
     }
@@ -1532,7 +1559,7 @@ class RMLog implements Serializable {
 			 this.setOutputStream();//after starting, should open output
 		 }
 		 if(LSN>logQueue.size()) return;
-		 System.out.println("flushing from "+LastSaveLSN+" to "+LSN);
+		 //System.out.println("flushing from "+LastSaveLSN+" to "+LSN);
 		 for (int i = LastSaveLSN; i < LSN+1; i++) {
 			 oos.writeObject(logQueue.get(i));
 		 }
